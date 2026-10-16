@@ -264,7 +264,7 @@ extern "C" fn h_op<B: Bus, const PROF: bool>(ctx: *mut Ctx, op: *const Fast, idx
     if PROF {
         cpu.profile_helper(unsafe { &*op });
     }
-    let j = cpu.exec_fast(bus, unsafe { *op }, next_pc);
+    let j = cpu.exec_fast(bus, unsafe { &*op }, next_pc);
     if bus.next_tick_due() || bus.code_writes() != ctx.code_version {
         ctx.brk = 1;
     }
@@ -1125,7 +1125,7 @@ mod tests {
             cpu.regs = [0x87654321; 16]; cpu.regs[0] = 128; cpu.regs[2] = 0xfedcba98;
             cpu.sp = 192; cpu.rets = 0x12345678;
             expected.regs = cpu.regs; expected.sp = cpu.sp; expected.rets = cpu.rets;
-            expected.pc = expected.exec_fast(&mut reference, fast, 2).unwrap_or(2);
+            expected.pc = expected.exec_fast(&mut reference, &fast, 2).unwrap_or(2);
             let code = hot(&mut j, id, 0, &[op(fast)], &mem);
             assert_eq!(unsafe { run(code, &mut cpu, &mut bus, &mem, 0, 1) }.0, 1, "{fast:?}");
             assert_eq!((cpu.regs, cpu.sp, cpu.rets, cpu.pc), (expected.regs, expected.sp, expected.rets, expected.pc), "{fast:?}");

@@ -1,68 +1,101 @@
 import SwiftUI
 import UIKit
 
+// Names and pairings follow M-VAVE's FM-1 product color selector.
+enum PanelFinish: String, CaseIterable, Identifiable {
+    case black = "Black", purple = "Purple", orange = "Orange", blackGreen = "Black-Green", coolGray = "Cool Gray", whiteBlue = "White-Blue"
+    var id: String { rawValue }
+    var palette: PanelPalette {
+        switch self {
+        case .black: return PanelPalette(body:0x383a3b, bodyBottom:0x252729, accent:0xb8bec0, control:0x484c50, controlBottom:0x25292c, ink:0xe0e3e4)
+        case .purple: return PanelPalette(body:0xe2b6d4, bodyBottom:0xc294bf, accent:0x9b77cb, control:0x9871bb, controlBottom:0x6f4e96, ink:0x392e46)
+        case .orange: return PanelPalette(body:0xf26c30, bodyBottom:0xd84d22, accent:0xffc497, control:0x494445, controlBottom:0x2b292b, ink:0x2d2422)
+        case .blackGreen: return PanelPalette(body:0x343839, bodyBottom:0x222829, accent:0x6cd1b5, control:0x74c9b1, controlBottom:0x409782, ink:0xddebe7)
+        case .coolGray: return PanelPalette(body:0xd6d0bd, bodyBottom:0xbeb8a8, accent:0xe7e3d7, control:0x999a91, controlBottom:0x74776f, ink:0x363c39)
+        case .whiteBlue: return PanelPalette(body:0xf0f0e9, bodyBottom:0xd6dbd8, accent:0x6e9bcd, control:0x6f91bb, controlBottom:0x466a97, ink:0x34455a)
+        }
+    }
+    var swatch: Color { Color(uiColor:UIColor(rgb:palette.body)) }
+    var secondarySwatch: Color { Color(uiColor:UIColor(rgb:palette.control)) }
+}
+struct PanelPalette {
+    let body:UInt32, bodyBottom:UInt32, accent:UInt32, control:UInt32, controlBottom:UInt32, ink:UInt32
+}
+private extension UIColor {
+    convenience init(rgb:UInt32, alpha:CGFloat=1) {self.init(red:CGFloat((rgb>>16)&255)/255,green:CGFloat((rgb>>8)&255)/255,blue:CGFloat(rgb&255)/255,alpha:alpha)}
+}
 struct PanelView: UIViewRepresentable {
     @ObservedObject var instrument: Instrument
+    var finish: PanelFinish = .black
     var showScreen: () -> Void
     func makeUIView(context: Context) -> HardwarePanel {
-        let view=HardwarePanel();view.instrument=instrument;view.showScreen=showScreen;return view
+        let view=HardwarePanel();view.instrument=instrument;view.finish=finish;view.showScreen=showScreen;return view
     }
-    func updateUIView(_ view: HardwarePanel, context: Context) {view.instrument=instrument;view.setNeedsDisplay()}
+    func updateUIView(_ view: HardwarePanel, context: Context) {view.instrument=instrument;view.finish=finish;view.showScreen=showScreen;view.setNeedsDisplay()}
 }
-
 private struct PanelControl {
     enum Kind {case key(Int), encoder(Int), master, screen}
-    let name: String
-    let rect: CGRect
-    let kind: Kind
+    let name:String, rect:CGRect, kind:Kind
 }
-private final class AccessibleControl: UIAccessibilityElement {
-    var activate: (() -> Void)?
-    var adjust: ((Int) -> Void)?
-    override func accessibilityActivate() -> Bool {activate?();return true}
-    override func accessibilityIncrement() {adjust?(1)}
-    override func accessibilityDecrement() {adjust?(-1)}
+private final class AccessibleControl:UIAccessibilityElement {
+    var activate:(() -> Void)?
+    var adjust:((Int) -> Void)?
+    override func accessibilityActivate()->Bool {activate?();return true}
+    override func accessibilityIncrement(){adjust?(1)}
+    override func accessibilityDecrement(){adjust?(-1)}
 }
-
-final class HardwarePanel: UIView {
-    weak var instrument: Instrument?
-    var showScreen: (() -> Void)?
+final class HardwarePanel:UIView {
+    weak var instrument:Instrument?
+    var finish:PanelFinish = .black
+    var showScreen:(() -> Void)?
     private var controls:[PanelControl]=[]
     private var touches:[ObjectIdentifier:(Int,CGPoint)]=[:]
     private var held:Set<Int>=[]
     private var angles:[Int:CGFloat]=[:]
-    private let W:CGFloat=1000, H:CGFloat=590
-    private var scale:CGFloat {min(bounds.width/W,bounds.height/H)}
-    private var origin:CGPoint {CGPoint(x:(bounds.width-W*scale)/2,y:(bounds.height-H*scale)/2)}
+    private var keyboardRect=CGRect.zero
     private let labels=["FX","SEL","ENV","LFO","EDIT","GLO","HOME","SAVE","ARP","SEQ","PLAY\nSTOP","REC"]
     private let whites=[0,2,4,6,7,9,11,12,14,16,18,19,21,23,24,26]
     private let blacks=[(1,0),(3,1),(5,2),(8,4),(10,5),(13,7),(15,8),(17,9),(20,11),(22,12),(25,14)]
-    override init(frame:CGRect) {
-        super.init(frame:frame);isOpaque=false;backgroundColor = .clear;isMultipleTouchEnabled=true
-        controls=[
-            PanelControl(name:"MASTER",rect:CGRect(x:51,y:65,width:56,height:56),kind:.master),
-            PanelControl(name:"SELECT",rect:CGRect(x:161,y:65,width:56,height:56),kind:.encoder(0)),
-            PanelControl(name:"PRESETS",rect:CGRect(x:51,y:169,width:56,height:56),kind:.encoder(6)),
-            PanelControl(name:"ALGORITHM",rect:CGRect(x:161,y:169,width:56,height:56),kind:.encoder(1)),
-            PanelControl(name:"OCT−",rect:CGRect(x:59,y:258,width:66,height:34),kind:.key(0)),
-            PanelControl(name:"OCT+",rect:CGRect(x:139,y:258,width:66,height:34),kind:.key(1)),
-            PanelControl(name:"Enlarge display",rect:CGRect(x:285,y:72,width:168,height:168),kind:.screen)
-        ]
-        for i in 0..<4 {controls.append(PanelControl(name:"KNOB\(i+1)",rect:CGRect(x:534+CGFloat(i)*112,y:65,width:56,height:56),kind:.encoder(i+2)))}
-        for i in 0..<12 {controls.append(PanelControl(name:labels[i].replacingOccurrences(of:"\n",with:" "),rect:CGRect(x:548+CGFloat(i%6)*62,y:178+CGFloat(i/6)*62,width:51,height:51),kind:.key(i+2)))}
-        for (i,n) in whites.enumerated() {controls.append(PanelControl(name:note(n),rect:CGRect(x:49+CGFloat(i)*57,y:458,width:43,height:92),kind:.key(n+14)))}
-        for (n,after) in blacks {controls.append(PanelControl(name:note(n),rect:CGRect(x:78+CGFloat(after)*57,y:360,width:43,height:90),kind:.key(n+14)))}
-    }
+    override init(frame:CGRect) {super.init(frame:frame);isOpaque=false;backgroundColor = .clear;isMultipleTouchEnabled=true}
     required init?(coder:NSCoder){fatalError()}
     private func note(_ n:Int)->String {let midi=n+53;return ["C","C sharp","D","D sharp","E","F","F sharp","G","G sharp","A","A sharp","B"][midi%12]+"\(midi/12-1)"}
     override func layoutSubviews() {
         super.layoutSubviews()
+        guard bounds.width>0,bounds.height>0 else{return}
+        // Lay out directly in screen points: the phone's wide canvas is an instrument,
+        // rather than a small scale model centered inside a fixed hardware aspect ratio.
+        let w=bounds.width, h=bounds.height
+        let keyboardHeight=min(240,max(118,h*0.42)), upper=h-keyboardHeight-8
+        let left=w*0.235, screenWidth=w*0.23, rightX=left+screenWidth+12, rightWidth=w-rightX-12
+        let knob=min(90,min((left-22)/2,(upper-88)/2))
+        let secondY=upper-44-knob
+        let screenSize=min(screenWidth-12,upper-16)
+        controls=[
+            PanelControl(name:"MASTER",rect:CGRect(x:9,y:19,width:knob,height:knob),kind:.master),
+            PanelControl(name:"SELECT",rect:CGRect(x:left-knob-7,y:19,width:knob,height:knob),kind:.encoder(0)),
+            PanelControl(name:"PRESETS",rect:CGRect(x:9,y:secondY,width:knob,height:knob),kind:.encoder(6)),
+            PanelControl(name:"ALGORITHM",rect:CGRect(x:left-knob-7,y:secondY,width:knob,height:knob),kind:.encoder(1)),
+            PanelControl(name:"OCT−",rect:CGRect(x:9,y:upper-39,width:(left-22)/2,height:36),kind:.key(0)),
+            PanelControl(name:"OCT+",rect:CGRect(x:13+(left-22)/2,y:upper-39,width:(left-22)/2,height:36),kind:.key(1)),
+            PanelControl(name:"Enlarge display",rect:CGRect(x:left+4+(screenWidth-12-screenSize)/2,y:12,width:screenSize,height:screenSize),kind:.screen)
+        ]
+        let rightKnob=min(90,min((rightWidth-30)/4,upper*0.36))
+        for i in 0..<4 {
+            let slot=rightWidth/4
+            controls.append(PanelControl(name:"KNOB\(i+1)",rect:CGRect(x:rightX+slot*CGFloat(i)+(slot-rightKnob)/2,y:19,width:rightKnob,height:rightKnob),kind:.encoder(i+2)))
+        }
+        let functionTop=max(rightKnob+26,upper*0.51), gap:CGFloat=5
+        let buttonWidth=(rightWidth-gap*5)/6, buttonHeight=(upper-functionTop-gap-3)/2
+        for i in 0..<12 {controls.append(PanelControl(name:labels[i].replacingOccurrences(of:"\n",with:" "),rect:CGRect(x:rightX+CGFloat(i%6)*(buttonWidth+gap),y:functionTop+CGFloat(i/6)*(buttonHeight+gap),width:buttonWidth,height:buttonHeight),kind:.key(i+2)))}
+        keyboardRect=CGRect(x:3,y:upper+5,width:w-6,height:keyboardHeight+1)
+        let pitch=(w-16)/16, keyWidth=pitch-2
+        for (i,n) in whites.enumerated() {controls.append(PanelControl(name:note(n),rect:CGRect(x:8+CGFloat(i)*pitch,y:upper+8+keyboardHeight*0.48,width:keyWidth,height:keyboardHeight*0.52-4),kind:.key(n+14)))}
+        for (n,after) in blacks {controls.append(PanelControl(name:note(n),rect:CGRect(x:8+pitch*0.64+CGFloat(after)*pitch,y:upper+10,width:keyWidth,height:keyboardHeight*0.43),kind:.key(n+14)))}
         accessibilityElements=controls.enumerated().map {i,c in
             let a=AccessibleControl(accessibilityContainer:self)
-            a.accessibilityLabel=c.name;a.accessibilityIdentifier=c.name
-            a.accessibilityFrameInContainerSpace=CGRect(x:origin.x+c.rect.minX*scale,y:origin.y+c.rect.minY*scale,width:c.rect.width*scale,height:c.rect.height*scale)
+            a.accessibilityLabel=c.name;a.accessibilityIdentifier=c.name;a.accessibilityFrameInContainerSpace=c.rect
             switch c.kind {
-            case .master,.encoder: a.accessibilityTraits=[.adjustable];a.adjust={ [weak self] n in self?.turn(i,n) }
+            case .master,.encoder:a.accessibilityTraits=[.adjustable];a.accessibilityHint="Swipe up or down to turn";a.adjust={ [weak self] n in self?.turn(i,n) }
             default:a.accessibilityTraits=[.button];a.activate={ [weak self] in
                 guard let self else{return}
                 if case .screen=c.kind {self.showScreen?();return}
@@ -71,89 +104,67 @@ final class HardwarePanel: UIView {
             }
             return a
         }
-    }
-    private func color(_ value:UInt32, _ alpha:CGFloat=1)->UIColor {
-        let r=CGFloat((value>>16)&255),g=CGFloat((value>>8)&255),b=CGFloat(value&255)
-        // Hardware is neutral graphite; keep saturated status lights colored.
-        if max(r,g,b)-min(r,g,b)<40 {return UIColor(white:(r*0.3+g*0.59+b*0.11)/255,alpha:alpha)}
-        return UIColor(red:r/255,green:g/255,blue:b/255,alpha:alpha)
+        setNeedsDisplay()
     }
     private func box(_ rect:CGRect,_ radius:CGFloat,_ top:UInt32,_ bottom:UInt32,_ stroke:UInt32?=nil) {
-        let ctx=UIGraphicsGetCurrentContext()!
-        let path=UIBezierPath(roundedRect:rect,cornerRadius:radius)
+        let ctx=UIGraphicsGetCurrentContext()!, path=UIBezierPath(roundedRect:rect,cornerRadius:radius)
         ctx.saveGState();path.addClip()
-        let gradient=CGGradient(colorsSpace:CGColorSpaceCreateDeviceRGB(),colors:[color(top).cgColor,color(bottom).cgColor] as CFArray,locations:[0,1])!
+        let gradient=CGGradient(colorsSpace:CGColorSpaceCreateDeviceRGB(),colors:[UIColor(rgb:top).cgColor,UIColor(rgb:bottom).cgColor] as CFArray,locations:[0,1])!
         ctx.drawLinearGradient(gradient,start:CGPoint(x:rect.midX,y:rect.minY),end:CGPoint(x:rect.midX,y:rect.maxY),options:[]);ctx.restoreGState()
-        if let stroke {color(stroke).setStroke();path.lineWidth=1.4;path.stroke()}
+        if let stroke {UIColor(rgb:stroke).setStroke();path.lineWidth=1;path.stroke()}
     }
-    private func text(_ value:String,_ rect:CGRect,_ size:CGFloat=12,_ tint:UInt32=0xc8c9c7,_ weight:UIFont.Weight = .medium) {
+    private func text(_ value:String,_ rect:CGRect,_ size:CGFloat=10,_ tint:UInt32=0xe1e5e3,_ weight:UIFont.Weight = .medium) {
         let style=NSMutableParagraphStyle();style.alignment = .center
-        (value as NSString).draw(in:rect,withAttributes:[.font:UIFont.systemFont(ofSize:size,weight:weight),.foregroundColor:color(tint),.paragraphStyle:style])
+        (value as NSString).draw(in:rect,withAttributes:[.font:UIFont.systemFont(ofSize:size,weight:weight),.foregroundColor:UIColor(rgb:tint),.paragraphStyle:style])
     }
     override func draw(_ rect:CGRect) {
-        guard let ctx=UIGraphicsGetCurrentContext() else{return}
-        ctx.saveGState();ctx.translateBy(x:origin.x,y:origin.y);ctx.scaleBy(x:scale,y:scale)
-        ctx.setShadow(offset:CGSize(width:0,height:9),blur:16,color:UIColor.black.withAlphaComponent(0.6).cgColor)
-        box(CGRect(x:4,y:4,width:992,height:582),52,0x454746,0x272a29,0x686b68)
-        ctx.setShadow(offset:.zero,blur:0,color:nil)
-        box(CGRect(x:10,y:10,width:980,height:568),46,0x454745,0x333633,0x181b19)
-        // Fine deterministic surface grain drawn in native Core Graphics.
-        for y in stride(from:20,to:570,by:5) {for x in stride(from:20,to:980,by:5) {
-            let v=(x*17+y*31)%19;ctx.setFillColor(UIColor.white.withAlphaComponent(v<3 ? 0.027 : 0.006).cgColor);ctx.fill(CGRect(x:x,y:y,width:1,height:1))
-        }}
-        box(CGRect(x:255,y:43,width:228,height:245),32,0x0c100f,0x050807,0x535753)
-        box(CGRect(x:276,y:63,width:186,height:186),5,0x050909,0x030605)
-        if let screen=instrument?.screen {
+        guard let ctx=UIGraphicsGetCurrentContext(),controls.count>6 else{return}
+        let p=finish.palette
+        box(bounds.insetBy(dx:0.5,dy:0.5),17,p.body,p.bodyBottom,p.accent)
+        box(keyboardRect,12,0x1b2022,0x111618,0x616b6d)
+        let screen=controls[6].rect
+        box(screen.insetBy(dx:-4,dy:-4),8,0x161b1e,0x090c0f,0x677374)
+        if let image=instrument?.screen {
             ctx.saveGState();ctx.interpolationQuality = .none
-            ctx.translateBy(x:285,y:240);ctx.scaleBy(x:1,y:-1)
-            ctx.draw(screen,in:CGRect(x:0,y:0,width:168,height:168));ctx.restoreGState()
+            ctx.translateBy(x:screen.minX,y:screen.maxY);ctx.scaleBy(x:1,y:-1)
+            ctx.draw(image,in:CGRect(origin:.zero,size:screen.size));ctx.restoreGState()
         } else {
-            text("FM–1",CGRect(x:290,y:105,width:158,height:35),29,0xb1d7d0,.light)
-            text("LOAD FIRMWARE",CGRect(x:290,y:159,width:158,height:22),11,0x728d87)
-            text(".fwsc",CGRect(x:290,y:184,width:158,height:20),11,0x65736e)
+            text("FM–1",CGRect(x:screen.minX,y:screen.midY-32,width:screen.width,height:36),28,0xc9e4df,.light)
+            text("CHOOSE FIRMWARE ↑",CGRect(x:screen.minX,y:screen.midY+13,width:screen.width,height:16),10,0x94b9b2)
         }
-        text("FM–1",CGRect(x:288,y:261,width:162,height:15),12,0x78807a,.semibold)
-        box(CGRect(x:533,y:164,width:392,height:141),18,0x282c29,0x151917,0x6b6f69)
-        box(CGRect(x:49,y:249,width:166,height:51),9,0x1a1e1b,0x131713,0x656a62)
-        box(CGRect(x:33,y:340,width:934,height:221),36,0x252a26,0x181e19,0x767b72)
         let led=instrument?.leds ?? []
         for (i,c) in controls.enumerated() {
             switch c.kind {
             case .master,.encoder:
-                let r=c.rect.insetBy(dx:6,dy:6)
-                box(r.insetBy(dx:-4,dy:-4),26,0x171b18,0x090d0a,0x686e65)
-                box(r,22,0x5d625b,0x222821,0x82887b)
-                box(r.insetBy(dx:6,dy:6),18,0x42493f,0x2b3228)
+                let r=c.rect.insetBy(dx:3,dy:3)
+                box(c.rect,c.rect.width/2,0x161c1f,0x0b1013,p.accent)
+                box(r,r.width/2,p.control,p.controlBottom,p.accent)
+                box(r.insetBy(dx:6,dy:6),r.width/2,p.control,p.controlBottom)
                 ctx.saveGState();ctx.translateBy(x:r.midX,y:r.midY)
                 let rotation:CGFloat
-                if case .master=c.kind {rotation = CGFloat((instrument?.volume ?? 0.7)*270-135)*CGFloat.pi/180} else {rotation=angles[i] ?? -0.5}
-                ctx.rotate(by:rotation);box(CGRect(x:-2,y:-18,width:4,height:11),2,0xe4e9db,0xb6c5ae);ctx.restoreGState()
-                text(c.name,CGRect(x:c.rect.midX-55,y:c.rect.minY-24,width:110,height:18),12,0xc5cac1,.regular)
+                if case .master=c.kind {rotation=CGFloat((instrument?.volume ?? 0.7)*270-135)*CGFloat.pi/180} else {rotation=angles[i] ?? -0.5}
+                ctx.rotate(by:rotation);box(CGRect(x:-1.5,y:-r.height*0.41,width:3,height:r.height*0.25),1.5,0xf1f6f1,0xc5d8cf);ctx.restoreGState()
+                text(c.name,CGRect(x:c.rect.midX-45,y:c.rect.minY-15,width:90,height:13),10,p.ink,.semibold)
             case .key(let id):
-                let down=held.contains(id);let active=id<led.count && led[id]>0.08
+                let down=held.contains(id), active=id<led.count && led[id]>0.08
                 if id>=14 {
-                    box(c.rect.insetBy(dx:-3,dy:-2),23,0x101610,0x101610,0x626b5c)
-                    box(c.rect,20,down ? 0x53634c : 0x343d31,down ? 0x394c33 : 0x242e22,down ? 0xb6d69c : 0x4d5845)
-                    let line=CGRect(x:c.rect.midX-2.5,y:c.rect.minY+14,width:5,height:c.rect.height>90 ? 48 : 31)
-                    box(line,2.5,active || down ? 0xc1ff8c : 0xf3f5e9,active || down ? 0x72cd4b : 0xc4cebc)
-                    if let k=blacks.firstIndex(where:{$0.0 == id-14}),k<10 {
-                        let words=["OP1","OP2","OP3","OP4","OP5","OP6","PIT","GLO","MONO","POLY"]
-                        text(words[k],CGRect(x:c.rect.minX,y:c.rect.minY+57,width:c.rect.width,height:12),9,0xc2ccba,.regular)
+                    box(c.rect,9,down ? 0x688f83 : p.control,down ? 0x36574d : p.controlBottom,down ? 0xa3ffd7 : p.accent)
+                    box(CGRect(x:c.rect.midX-2,y:c.rect.minY+10,width:4,height:max(16,c.rect.height*0.4)),2,active || down ? 0xbaffad : 0xf0f3e8,active || down ? 0x68db68 : 0xc7d0c7)
+                    if let k=blacks.firstIndex(where:{$0.0==id-14}),k<10,c.rect.height>45 {
+                        text(["OP1","OP2","OP3","OP4","OP5","OP6","PIT","GLO","MONO","POLY"][k],CGRect(x:c.rect.minX,y:c.rect.maxY-16,width:c.rect.width,height:12),9,0xf0f2eb)
                     }
                 } else {
-                    box(c.rect.insetBy(dx:-2,dy:-2),9,0x0a100a,0x0b110a)
-                    box(c.rect,7,down ? 0x56644d : 0x343e2f,down ? 0x35442e : 0x1d2818,0x535e4b)
+                    box(c.rect,7,down ? 0x688f83 : p.control,down ? 0x36574d : p.controlBottom,down ? 0xa3ffd7 : p.accent)
                     let title=id<2 ? c.name : labels[id-2]
-                    text(title,CGRect(x:c.rect.minX+2,y:c.rect.midY-(title.contains("\n") ? 16 : 7),width:c.rect.width-4,height:35),11,0xd4ddca,.medium)
+                    text(title,CGRect(x:c.rect.minX+1,y:c.rect.midY-(title.contains("\n") ? 12 : 6),width:c.rect.width-2,height:28),id<2 ? 12 : 11,0xf6f7f1,.semibold)
                     if active {box(CGRect(x:c.rect.midX-7,y:c.rect.minY+3,width:14,height:2),1,0xc1ff8c,0x72cd4b)}
                 }
             case .screen:break
             }
         }
-        ctx.restoreGState()
     }
-    private func point(_ touch:UITouch)->CGPoint {let p=touch.location(in:self);return CGPoint(x:(p.x-origin.x)/scale,y:(p.y-origin.y)/scale)}
-    private func hit(_ p:CGPoint)->Int? {controls.indices.reversed().first{controls[$0].rect.insetBy(dx:-3,dy:-3).contains(p)}}
+    private func point(_ touch:UITouch)->CGPoint {touch.location(in:self)}
+    private func hit(_ p:CGPoint)->Int? {controls.indices.reversed().first{controls[$0].rect.contains(p)}}
     private func press(_ i:Int,_ down:Bool) {
         if case .key(let id)=controls[i].kind {
             if down {held.insert(id)} else {held.remove(id)}
@@ -177,7 +188,7 @@ final class HardwarePanel: UIView {
     override func touchesMoved(_ input:Set<UITouch>,with event:UIEvent?) {
         for t in input {
             let key=ObjectIdentifier(t);guard let (i,last)=touches[key] else{continue};let p=point(t)
-            if i < 0 {
+            if i<0 {
                 if let next=hit(p),case .key(let n)=controls[next].kind,n>=14 {
                     let already=touches.values.contains{$0.0==next};touches[key]=(next,p);if !already {press(next,true)}
                 }
@@ -185,8 +196,8 @@ final class HardwarePanel: UIView {
             }
             switch controls[i].kind {
             case .encoder,.master:
-                let delta=Int((last.y-p.y)/4)
-                if delta != 0 {turn(i,delta);touches[key]=(i,CGPoint(x:p.x,y:last.y-CGFloat(delta)*4))}
+                let delta=Int((last.y-p.y)/3)
+                if delta != 0 {turn(i,delta);touches[key]=(i,CGPoint(x:p.x,y:last.y-CGFloat(delta)*3))}
             case .key(let id) where id>=14:
                 let next=hit(p)
                 if next != i {

@@ -240,7 +240,7 @@ extern "C" fn h_op<B: Bus, const PROF: bool>(ctx: *mut Ctx, op: *const Fast, idx
     if PROF {
         cpu.profile_helper(unsafe { &*op });
     }
-    let j = cpu.exec_fast(bus, unsafe { *op }, next_pc);
+    let j = cpu.exec_fast(bus, unsafe { &*op }, next_pc);
     if bus.next_tick_due() {
         ctx.brk = 1;
     }

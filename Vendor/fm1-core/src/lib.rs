@@ -201,6 +201,9 @@ pub struct Cpu {
     /// pc -> block+1 table (0 = none).
     bops: Vec<BOp>,
     blocks: Vec<(u32, u32, u32)>,
+    /// Predecoded pure instruction pairs. They run only with enough clock room for both
+    /// instructions; interrupt boundaries fall back to the ordinary per-op dispatcher.
+    bpairs: Vec<Option<AddBranch>>,
     bmap: Vec<u32>,
     /// Per block: for one over RAM code, the bytes it was built from. RAM can change (code
     /// copied in, overlays), so such a block is checked against memory before every entry
@@ -209,9 +212,8 @@ pub struct Cpu {
     /// The stock firmware's synth renders on cpu1 from RAM: without blocks it ran a step at
     /// a time.
     bbytes: Vec<Option<Box<[u8]>>>,
-    /// Per block over RAM, in the wasm build: the bus's count of code-word writes when the block
+    /// Per block over RAM: the bus's count of code-word writes when the block
     /// was last found current (`ram_block_ok`: the same count, no compare).
-    #[cfg(target_arch = "wasm32")]
     bver: Vec<u64>,
     /// FM1_NO_RAM_BLOCKS: RAM code a step at a time (the reference)
     no_ram_blocks: bool,
@@ -435,6 +437,23 @@ impl Cpu {
                 sync!();
                 return Ok((n, false));
             };
+            if !careful && !self.jit_on {
+                if let Some(pair) = self.bpairs[id] {
+                    let ticks = 2 - u64::from(n == 0);
+                    if bus.tick_room() >= ticks {
+                        // Both ops are pure register operations, so no MMIO or interrupt
+                        // enable can observe the batched ticks. Never cross a due tick.
+                        bus.add_ticks(ticks);
+                        let (value, flags) = add_flags(self.regs[(pair.s & 15) as usize], pair.add, 0);
+                        self.regs[(pair.d & 15) as usize] = value;
+                        self.flags = flags;
+                        let equal = self.regs[(pair.test & 15) as usize] == pair.compare;
+                        pc = if equal == pair.equal { pair.target } else { pc + pair.bytes as u32 };
+                        n += 2;
+                        continue;
+                    }
+                }
+            }
             #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
             if self.jit_on && !careful {
                 if let Some(mem) = jit_mem {
@@ -516,9 +535,11 @@ impl Cpu {
             #[cfg(not(any(all(target_arch = "aarch64", target_os = "macos"), target_arch = "wasm32")))]
             let _ = (id, &jit_mem);
             for i in start..start + len {
-                // SAFETY: build_block pushed start..start+len into bops and
-                // bops is only cleared together with the block table
-                let op = unsafe { *self.bops.get_unchecked(i as usize) };
+                // SAFETY: build_block pushed start..start+len into bops. Executing an
+                // op changes architectural state and the bus, never bops or its allocation;
+                // block creation/clearing happens only outside this loop. The reference
+                // therefore remains valid across exec_fast/exec_careful.
+                let op = unsafe { &*self.bops.as_ptr().add(i as usize) };
                 if n > 0 && bus.tick() {
                     // this instruction's tick is spent; the caller services
                     // the SoC and then runs it without ticking again
@@ -532,7 +553,7 @@ impl Cpu {
                 let next_pc = pc + op.len as u32;
                 if !(careful || op.careful) {
                     // plain micro-op: cannot start or end a pair, block or loop
-                    pc = self.exec_fast(bus, op.fast, next_pc).unwrap_or(next_pc);
+                    pc = self.exec_fast(bus, &op.fast, next_pc).unwrap_or(next_pc);
                     n += 1;
                 } else {
                     sync!();
@@ -688,13 +709,12 @@ impl Cpu {
         (q == end).then_some(then)
     }
 
-    /// Is RAM block `id` still built from what memory holds now? In the wasm build, by the bus's
+    /// Is RAM block `id` still built from what memory holds now? Use the bus's
     /// count of writes to code words when it keeps one: the same count as when the block was last
-    /// found current, nothing has changed; else the bytes are compared. Native block lookup
-    /// compares bytes; compiled RAM chain targets keep separate versioned snapshots.
+    /// found current, nothing has changed; else the bytes are compared. Buses without
+    /// tracking still compare on every entry. Compiled chain targets have their own guards.
     #[inline]
     fn ram_block_ok<B: Bus>(&mut self, bus: &mut B, id: usize) -> bool {
-        #[cfg(target_arch = "wasm32")]
         if let Some(w) = bus.code_writes() {
             if self.bver[id] == w {
                 return true;
@@ -738,12 +758,12 @@ impl Cpu {
         if self.bmap.is_empty() {
             self.bmap = vec![0; 1 << BITS];
         }
-        if self.bops.len() > 1 << 22 {
+        if self.bops.len() > 1 << 22 || self.blocks.len() > 1 << 18 {
             // (cannot happen for one image, but never grow without bound)
             self.bops.clear();
             self.blocks.clear();
+            self.bpairs.clear();
             self.bbytes.clear();
-            #[cfg(target_arch = "wasm32")]
             self.bver.clear();
             self.bmap.iter_mut().for_each(|x| *x = 0);
             #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
@@ -791,6 +811,7 @@ impl Cpu {
         // look again every time execution gets here
         let len = self.bops.len() as u32 - start;
         self.blocks.push((pc, start, len));
+        self.bpairs.push(AddBranch::from_ops(&self.bops[start as usize..]));
         // a RAM block keeps its bytes (6 more: an instruction's window reaches past its length)
         let bytes: Option<Box<[u8]>> = if xip { None } else { ram_code(bus, pc).map(|m| m[..((p - pc) as usize + 6).min(m.len())].into()) };
         if let Some(b) = &bytes {
@@ -799,7 +820,6 @@ impl Cpu {
         }
         self.bbytes.resize(self.blocks.len() - 1, None);
         self.bbytes.push(bytes);
-        #[cfg(target_arch = "wasm32")]
         {
             self.bver.resize(self.blocks.len() - 1, u64::MAX);
             self.bver.push(bus.code_writes().unwrap_or(u64::MAX));
@@ -818,7 +838,7 @@ impl Cpu {
     #[inline(never)]
     fn exec_careful<B: Bus>(&mut self, bus: &mut B, f: Fast, head: bool, gated: bool, next_pc: u32) -> (bool, bool) {
         let jumped = if !head && self.pair_pending.is_none() {
-            self.exec_fast(bus, f, next_pc)
+            self.exec_fast(bus, &f, next_pc)
         } else {
             self.exec_fast_paired(bus, f, head, next_pc)
         };
@@ -834,7 +854,7 @@ impl Cpu {
     fn exec_fast_paired<B: Bus>(&mut self, bus: &mut B, f: Fast, head: bool, next_pc: u32) -> Option<u32> {
         let pending = self.pair_pending.take();
         let before = self.regs;
-        let jumped = self.exec_fast(bus, f, next_pc);
+        let jumped = self.exec_fast(bus, &f, next_pc);
         if let Some((old, new)) = pending {
             for i in 0..16 {
                 if new[i] != old[i] && self.regs[i] == old[i] {
@@ -862,7 +882,7 @@ impl Cpu {
                 if self.profile {
                     self.route_hist[31] += 1;
                 }
-                let jumped = self.exec_fast(bus, f, next_pc);
+                let jumped = self.exec_fast(bus, &f, next_pc);
                 self.finish(jumped, next_pc);
                 return Ok(());
             }
@@ -962,10 +982,10 @@ impl Cpu {
     /// `exec_syntax` shape, with operands and branch targets resolved once.
     /// (always inlined: wasm builds otherwise call it per instruction from the block loop)
     #[inline(always)]
-    fn exec_fast<B: Bus>(&mut self, bus: &mut B, f: Fast, next_pc: u32) -> Option<u32> {
+    fn exec_fast<B: Bus>(&mut self, bus: &mut B, f: &Fast, next_pc: u32) -> Option<u32> {
         let _ = next_pc;
         let base = |cpu: &Self, b: Base| match b { Base::Reg(r) => cpu.regs[r as usize], Base::Sp => cpu.sp };
-        match f {
+        match *f {
             Fast::Mov { d, s } => self.regs[(d & 15) as usize] = self.regs[(s & 15) as usize],
             Fast::MovI { d, v } => self.regs[(d & 15) as usize] = v,
             Fast::Alu3 { d, a, b, op } => self.regs[(d & 15) as usize] = self.alu_f(op, self.regs[(a & 15) as usize], self.regs[(b & 15) as usize]),
@@ -1088,6 +1108,20 @@ impl Cpu {
                 let a = self.sp.wrapping_add(off);
                 bus.write32(a, self.regs[(s & 15) as usize]);
             }
+            Fast::AddRR { d, a, b } => {
+                let (r, f) = add_flags(self.regs[(a & 15) as usize], self.regs[(b & 15) as usize], 0);
+                self.flags = f; self.regs[(d & 15) as usize] = r;
+            }
+            Fast::SubRR { d, a, b } => {
+                let (r, f) = add_flags(self.regs[(a & 15) as usize], !self.regs[(b & 15) as usize], 1);
+                self.flags = f; self.regs[(d & 15) as usize] = r;
+            }
+            Fast::AndI { d, s, v } => self.regs[(d & 15) as usize] = self.regs[(s & 15) as usize] & v,
+            Fast::AndBit { d, s, r } => self.regs[(d & 15) as usize] = self.regs[(s & 15) as usize] & (1 << (self.regs[(r & 15) as usize] & 31)),
+            Fast::ShlR { d, a, b } => self.regs[(d & 15) as usize] = self.regs[(a & 15) as usize] << (self.regs[(b & 15) as usize] & 31),
+            Fast::ShrR { d, a, b } => self.regs[(d & 15) as usize] = self.regs[(a & 15) as usize] >> (self.regs[(b & 15) as usize] & 31),
+            Fast::ShrI { d, s, n } => self.regs[(d & 15) as usize] = self.regs[(s & 15) as usize] >> (n & 31),
+            Fast::MulI { d, s, v } => self.regs[(d & 15) as usize] = self.regs[(s & 15) as usize].wrapping_mul(v),
             Fast::AddRI { d, s, v } => {
                 let (r, f) = add_flags(self.regs[(s & 15) as usize], v, 0);
                 self.flags = f;
@@ -1182,7 +1216,7 @@ impl Cpu {
                 }
             }
             // the rarer ops out of line, to keep the inlined copies of this match small
-            _ => return self.exec_rare(bus, f, next_pc),
+            _ => return self.exec_rare(bus, *f, next_pc),
         }
         None
     }
@@ -2097,7 +2131,7 @@ impl Cpu {
         #[allow(unused_variables)]
         let (n, other) = (name, name);
         if let Some(f) = pre.fast {
-            jumped = self.exec_fast(bus, f, next_pc);
+            jumped = self.exec_fast(bus, &f, next_pc);
         } else { match pre.route {
             0 => {
                 let t = bittest.unwrap();
@@ -3615,6 +3649,136 @@ mod tests {
         }
     }
 
+    /// A RAM-code bus with optional write tracking, exercising both cache guards.
+    struct CodeRam {
+        ram: FlatRam,
+        version: Option<u64>,
+        cycles: u64,
+        due: u64,
+    }
+
+    impl Bus for CodeRam {
+        fn read8(&mut self, a: u32) -> u8 { self.ram.read8(a) }
+        fn read16(&mut self, a: u32) -> u16 { self.ram.read16(a) }
+        fn read32(&mut self, a: u32) -> u32 { self.ram.read32(a) }
+        fn write8(&mut self, a: u32, v: u8) {
+            self.ram.write8(a, v);
+            if let Some(n) = &mut self.version { *n += 1; }
+        }
+        fn write16(&mut self, a: u32, v: u16) {
+            for (i, b) in v.to_le_bytes().into_iter().enumerate() { self.write8(a + i as u32, b); }
+        }
+        fn write32(&mut self, a: u32, v: u32) {
+            for (i, b) in v.to_le_bytes().into_iter().enumerate() { self.write8(a + i as u32, b); }
+        }
+        fn code_writes(&self) -> Option<u64> { self.version }
+        fn tick(&mut self) -> bool { self.cycles += 1; self.cycles >= self.due }
+        fn tick_room(&self) -> u64 { self.due.saturating_sub(self.cycles + 1) }
+        fn add_ticks(&mut self, n: u64) { self.cycles += n; }
+        fn jit_mem(&mut self) -> Option<JitMem> {
+            Some(JitMem { ram: self.ram.mem.as_mut_ptr(), ram_base: 0,
+                ram_len: self.ram.mem.len() as u32, ram_code: std::ptr::null(),
+                xip: std::ptr::null(), xip_base: 0x0200_0000, xip_len: 0 })
+        }
+    }
+
+    #[test]
+    fn ram_block_cache_observes_code_changes_with_and_without_write_tracking() {
+        for version in [Some(0), None] {
+            let mut bus = CodeRam { ram: FlatRam::new(vec![0; 256]), version, cycles: 0, due: u64::MAX };
+            bus.write16(0, 0x2a40); // r0 = 10
+            let mut cpu = Cpu::new(0);
+            cpu.no_ram_blocks = false;
+            cpu.run_fast(&mut bus, 1).unwrap();
+            assert_eq!(cpu.regs[0], 10);
+            let blocks = cpu.blocks.len();
+            cpu.pc = 0;
+            cpu.run_fast(&mut bus, 1).unwrap();
+            assert_eq!(cpu.blocks.len(), blocks, "unchanged code reuses block");
+
+            // A write outside this block must refresh its version without rebuilding it.
+            bus.write8(200, 7);
+            cpu.pc = 0;
+            cpu.run_fast(&mut bus, 1).unwrap();
+            assert_eq!(cpu.blocks.len(), blocks);
+
+            bus.write8(1, 0x24); // r0 = 4
+            cpu.pc = 0;
+            cpu.run_fast(&mut bus, 1).unwrap();
+            assert_eq!(cpu.regs[0], 4, "self-modifying RAM code must invalidate");
+            assert!(cpu.blocks.len() > blocks);
+        }
+    }
+
+    #[test]
+    fn instruction_pairs_match_per_op_execution_at_tick_and_budget_boundaries() {
+        const PC: u32 = 0x0200_0000;
+        for initial in [0, 1, 0x7fff_ffff, u32::MAX] {
+            for test in [0, 1] { // test may alias the destination
+                for equal in [false, true] {
+                    for budget in [1, 2, 3, 17] {
+                        for due in [2, 3, 4, 5, 100] {
+                            let make = |fused| {
+                                let branch = if equal { Fast::BrIEq { a: test, v: 42, target: PC } }
+                                    else { Fast::BrINe { a: test, v: 42, target: PC } };
+                                let mut cpu = Cpu::new(PC);
+                                cpu.regs[0] = initial;
+                                cpu.regs[1] = if equal { 42 } else { 0 };
+                                // Equality case keeps looping by testing r1, or stops after
+                                // one pair when testing r0; a second cached NOP block covers it.
+                                cpu.bops = vec![
+                                    BOp { fast: Fast::AddRI { d: 0, s: 0, v: 1 }, len: 2, careful: false, pair_head: false, glue: false },
+                                    BOp { fast: branch, len: 4, careful: false, pair_head: false, glue: false },
+                                    BOp { fast: Fast::Goto { target: PC }, len: 2, careful: false, pair_head: false, glue: false },
+                                ];
+                                cpu.blocks = vec![(PC, 0, 2), (PC + 6, 2, 1)];
+                                cpu.bpairs = vec![if fused { AddBranch::from_ops(&cpu.bops[..2]) } else { None }, None];
+                                cpu.bmap = vec![0; 16];
+                                cpu.bmap[0] = 1;
+                                cpu.bmap[3] = 2;
+                                (cpu, CodeRam { ram: FlatRam::new(vec![]), version: None, cycles: 1, due })
+                            };
+                            let (mut fast, mut fast_bus) = make(true);
+                            let (mut slow, mut slow_bus) = make(false);
+                            assert_eq!(fast.run_fast(&mut fast_bus, budget).unwrap(), slow.run_fast(&mut slow_bus, budget).unwrap());
+                            assert_eq!((fast.pc, fast.regs, fast.flags, fast.insn_count, fast_bus.cycles),
+                                (slow.pc, slow.regs, slow.flags, slow.insn_count, slow_bus.cycles));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn specialized_integer_ops_match_generic_flags_and_registers() {
+        for seed in [0u32, 1, 31, 32, 0x7fff_ffff, 0x8000_0000, u32::MAX] {
+            for d in [0, 1, 2] {
+                let ops = [
+                    Fast::Alu2 { d, b: 2, op: Op::Add }, Fast::Alu3 { d, a: 1, b: 2, op: Op::Add },
+                    Fast::Alu3 { d, a: 1, b: 2, op: Op::Sub }, Fast::Alu2 { d, b: 2, op: Op::Shl },
+                    Fast::A4 { d, s: 1, op: Op::Add, rk: 0, rv: 2 },
+                    Fast::A4 { d, s: 1, op: Op::And, rk: 1, rv: seed },
+                    Fast::A4 { d, s: 1, op: Op::And, rk: 2, rv: 2 },
+                    Fast::A4 { d, s: 1, op: Op::Mul, rk: 1, rv: seed },
+                    Fast::A4 { d, s: 1, op: Op::Shl, rk: 0, rv: 2 },
+                    Fast::A4 { d, s: 1, op: Op::Shr, rk: 0, rv: 2 },
+                    Fast::A4 { d, s: 1, op: Op::Shr, rk: 1, rv: seed },
+                ];
+                for op in ops {
+                    let mut a = Cpu::new(0);
+                    let mut b = Cpu::new(0);
+                    for r in 0..16 { a.regs[r] = seed.wrapping_add(r as u32); }
+                    b.regs = a.regs;
+                    a.flags = 15; b.flags = 15;
+                    let mut ram = FlatRam::new(vec![]);
+                    assert_eq!(a.exec_fast(&mut ram, &op, 4), b.exec_fast(&mut ram, &op.specialise(), 4));
+                    assert_eq!((a.regs, a.flags), (b.regs, b.flags), "{op:?}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn nop_runs_at_entry() {
         let mut ram = FlatRam::new(vec![0u8; 16]);
@@ -4317,6 +4481,32 @@ struct BOp {
     glue: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct AddBranch {
+    d: u8,
+    s: u8,
+    test: u8,
+    bytes: u8,
+    add: u32,
+    compare: u32,
+    target: u32,
+    equal: bool,
+}
+
+impl AddBranch {
+    fn from_ops(ops: &[BOp]) -> Option<Self> {
+        let [a, b] = ops else { return None };
+        if a.careful || b.careful || a.pair_head || b.pair_head { return None; }
+        let Fast::AddRI { d, s, v: add } = a.fast else { return None };
+        let (test, compare, target, equal) = match b.fast {
+            Fast::BrIEq { a, v, target } => (a, v, target, true),
+            Fast::BrINe { a, v, target } => (a, v, target, false),
+            _ => return None,
+        };
+        Some(Self { d, s, test, bytes: a.len + b.len, add, compare, target, equal })
+    }
+}
+
 impl Fast {
     /// The guest registers this op reads and writes (bit masks), for gluing pairs (`BOp::glue`);
     /// None: not worked out (never glued).
@@ -4326,6 +4516,9 @@ impl Fast {
         let base = |b: Base| match b { Base::Reg(r) => m(r), Base::Sp => 0 };
         let range = |n: u8| { let n = n as i32; (n.min(4)..=n.max(3)).fold(0u16, |a, r| a | m(r as u8)) };
         Some(match *self {
+            Fast::AddRR { d, a, b } | Fast::SubRR { d, a, b } | Fast::ShlR { d, a, b } | Fast::ShrR { d, a, b } => (m(a) | m(b), m(d)),
+            Fast::AndBit { d, s, r } => (m(s) | m(r), m(d)),
+            Fast::AndI { d, s, .. } | Fast::ShrI { d, s, .. } | Fast::MulI { d, s, .. } => (m(s), m(d)),
             Fast::Mov { d, s } | Fast::Ext { d, s, .. } | Fast::BitExt { d, s, .. } | Fast::Un { d, s, .. }
             | Fast::ShlI { d, s, .. } | Fast::SarI { d, s, .. } | Fast::AddRI { d, s, .. } => (m(s), m(d)),
             Fast::MovI { d, .. } | Fast::RFromSp { d, .. } | Fast::IcfgRd { d } => (0, m(d)),
@@ -4387,6 +4580,17 @@ impl Fast {
     /// generic arm's semantics with its run-time choices made here).
     fn specialise(self) -> Fast {
         match self {
+            Fast::Alu2 { d, b, op: Op::Add } => Fast::AddRR { d, a: d, b },
+            Fast::Alu3 { d, a, b, op: Op::Add } => Fast::AddRR { d, a, b },
+            Fast::Alu3 { d, a, b, op: Op::Sub } => Fast::SubRR { d, a, b },
+            Fast::Alu2 { d, b, op: Op::Shl } => Fast::ShlR { d, a: d, b },
+            Fast::A4 { d, s, op: Op::Add, rk: 0, rv } => Fast::AddRR { d, a: s, b: rv as u8 },
+            Fast::A4 { d, s, op: Op::And, rk: 1, rv } => Fast::AndI { d, s, v: rv },
+            Fast::A4 { d, s, op: Op::And, rk: 2, rv } => Fast::AndBit { d, s, r: rv as u8 },
+            Fast::A4 { d, s, op: Op::Mul, rk: 1, rv } => Fast::MulI { d, s, v: rv },
+            Fast::A4 { d, s, op: Op::Shl, rk: 0, rv } => Fast::ShlR { d, a: s, b: rv as u8 },
+            Fast::A4 { d, s, op: Op::Shr, rk: 0, rv } => Fast::ShrR { d, a: s, b: rv as u8 },
+            Fast::A4 { d, s, op: Op::Shr, rk: 1, rv } => Fast::ShrI { d, s, n: rv as u8 },
             Fast::BrI { a, v, cond: Cond::Eq, target } => Fast::BrIEq { a, v, target },
             Fast::BrI { a, v, cond: Cond::Ne, target } => Fast::BrINe { a, v, target },
             Fast::Ld { d, b: Base::Reg(b), off, w: 4, signed: _ } => Fast::LdW { d, b, off },
@@ -4594,6 +4798,14 @@ enum Fast {
     StW { s: u8, b: u8, off: u32 },
     StWSp { s: u8, off: u32 },
     AddRI { d: u8, s: u8, v: u32 },
+    AddRR { d: u8, a: u8, b: u8 },
+    SubRR { d: u8, a: u8, b: u8 },
+    AndI { d: u8, s: u8, v: u32 },
+    AndBit { d: u8, s: u8, r: u8 },
+    ShlR { d: u8, a: u8, b: u8 },
+    ShrR { d: u8, a: u8, b: u8 },
+    ShrI { d: u8, s: u8, n: u8 },
+    MulI { d: u8, s: u8, v: u32 },
     ShlI { d: u8, s: u8, n: u8 },
     SarI { d: u8, s: u8, n: u8 },
     // stack-pointer moves, bit fields and the global interrupt enable (were slow-path syntax)
@@ -5294,6 +5506,14 @@ pub fn describe(win: u64, pc: u32) -> Option<String> {
         Fast::Alu2I { d, v, op } => format!("A r{} r{} {} {}", d, d, opname(op), v),
         Fast::A4 { d, s, op, rk, rv } => format!("A r{} r{} {} {}", d, s, opname(op), rhs(rk, rv)),
         Fast::AddRI { d, s, v } => format!("A r{} r{} + {}", d, s, v),
+        Fast::AddRR { d, a, b } => format!("A r{} r{} + r{}", d, a, b),
+        Fast::SubRR { d, a, b } => format!("A r{} r{} - r{}", d, a, b),
+        Fast::AndI { d, s, v } => format!("A r{} r{} & {}", d, s, v),
+        Fast::AndBit { d, s, r } => format!("A r{} r{} & 1<<r{}", d, s, r),
+        Fast::MulI { d, s, v } => format!("A r{} r{} * {}", d, s, v),
+        Fast::ShlR { d, a, b } => format!("A r{} r{} << r{}", d, a, b),
+        Fast::ShrR { d, a, b } => format!("A r{} r{} >> r{}", d, a, b),
+        Fast::ShrI { d, s, n } => format!("A r{} r{} >> {}", d, s, n & 31),
         Fast::ShlI { d, s, n } => format!("A r{} r{} << {}", d, s, n),
         Fast::SarI { d, s, n } => format!("A r{} r{} >>> {}", d, s, n),
         Fast::LdIdx { d, b, i, sh, w, signed } => format!("X r{} r{} r{} {} w{} {}", d, b, i, sh, w, sgn(signed)),

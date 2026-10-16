@@ -43,6 +43,7 @@ impl Ram {
         }
     }
 
+    #[inline(always)]
     pub fn len(&self) -> usize {
         self.data.len()
     }
@@ -56,15 +57,18 @@ impl Ram {
         self.data.is_empty()
     }
 
+    #[inline(always)]
     pub fn read8(&self, addr: u32) -> u8 {
         self.data[addr as usize]
     }
 
+    #[inline(always)]
     pub fn read16(&self, addr: u32) -> u16 {
         let a = addr as usize;
         u16::from_le_bytes([self.data[a], self.data[a + 1]])
     }
 
+    #[inline(always)]
     pub fn read32(&self, addr: u32) -> u32 {
         let a = addr as usize;
         u32::from_le_bytes([
@@ -75,17 +79,20 @@ impl Ram {
         ])
     }
 
+    #[inline(always)]
     pub fn write8(&mut self, addr: u32, value: u8) {
         self.wrote(addr as usize);
         self.data[addr as usize] = value;
     }
 
+    #[inline(always)]
     pub fn write16(&mut self, addr: u32, value: u16) {
         let a = addr as usize;
         self.wrote(a);
         self.data[a..a + 2].copy_from_slice(&value.to_le_bytes());
     }
 
+    #[inline(always)]
     pub fn write32(&mut self, addr: u32, value: u32) {
         let a = addr as usize;
         self.wrote(a);
@@ -114,5 +121,26 @@ mod tests {
         ram.write16(8, 0x1234);
         assert_eq!(ram.read8(8), 0x34);
         assert_eq!(ram.read8(9), 0x12);
+    }
+
+    #[test]
+    fn code_tracking_catches_unaligned_overlapping_stores_and_bulk_loads() {
+        let mut ram = Ram::new(64);
+        ram.mark_code(16, 24);
+        let mut version = ram.code_writes;
+        ram.write32(0, 1);
+        assert_eq!(ram.code_writes, version, "unrelated data is not code");
+        ram.write32(13, 2); // begins in preceding word, overlaps byte 16
+        version += 1;
+        assert_eq!(ram.code_writes, version);
+        ram.write16(15, 3);
+        version += 1;
+        assert_eq!(ram.code_writes, version);
+        ram.write8(23, 4);
+        version += 1;
+        assert_eq!(ram.code_writes, version);
+        ram.load(16, &[1, 2, 3, 4]);
+        version += 1;
+        assert_eq!(ram.code_writes, version);
     }
 }

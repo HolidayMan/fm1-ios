@@ -1,5 +1,8 @@
 use fm1_ios_core::*;
 use std::{env,fs,time::Instant};
+fn digest(bytes: impl IntoIterator<Item=u8>) -> u64 {
+    bytes.into_iter().fold(0xcbf29ce484222325, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3))
+}
 fn main(){
     for path in env::args().skip(1){
         let bytes=fs::read(&path).unwrap();let mut err=[0u8;512];
@@ -17,10 +20,13 @@ fn main(){
         let state=unsafe{instrument_snapshot(m,pixels.as_mut_ptr(),leds.as_mut_ptr())};
         let changes=pixels.iter().filter(|&&p|p!=0xff000000).count();
         let n=unsafe{instrument_flash(m,std::ptr::null_mut(),0)};let mut flash=vec![0u8;n];unsafe{instrument_flash(m,flash.as_mut_ptr(),n);}
+        let lcd_hash=digest(pixels.iter().flat_map(|p|p.to_le_bytes()));
+        let flash_hash=digest(flash.iter().copied());
         assert!(unsafe{instrument_restore(m,flash.as_ptr(),n)});
         unsafe{instrument_destroy(m)};
         let elapsed=start.elapsed().as_secs_f64();
         println!("{}: state={} nonblack={} frames={} peak={:.4} energy={:.3} wall={:.2}s audio={:.2}s ratio={:.2}x",path,state,changes,frames,peak,energy,elapsed,frames as f64/44100.0,frames as f64/44100.0/elapsed);
+        println!("  deterministic fingerprints: pcm={:016x} lcd={lcd_hash:016x} flash={flash_hash:016x}",digest(pcm.iter().copied()));
         assert_eq!(state,1,"firmware halted");assert!(changes>100,"display blank");assert!(peak>0.001,"no note audio");
         let mut wav=Vec::new();let len=pcm.len() as u32;
         wav.extend_from_slice(b"RIFF");wav.extend_from_slice(&(36+len).to_le_bytes());wav.extend_from_slice(b"WAVEfmt ");wav.extend_from_slice(&16u32.to_le_bytes());wav.extend_from_slice(&1u16.to_le_bytes());wav.extend_from_slice(&2u16.to_le_bytes());wav.extend_from_slice(&44100u32.to_le_bytes());wav.extend_from_slice(&176400u32.to_le_bytes());wav.extend_from_slice(&4u16.to_le_bytes());wav.extend_from_slice(&16u16.to_le_bytes());wav.extend_from_slice(b"data");wav.extend_from_slice(&len.to_le_bytes());wav.extend(pcm);

@@ -10,3 +10,5 @@ void instrument_volume(void *, uint32_t);
 uint32_t instrument_snapshot(void *, uint32_t *, float *);
 size_t instrument_flash(void *, uint8_t *, size_t);
 bool instrument_restore(void *, const uint8_t *, size_t);
+
+#include "AudioRing.h"

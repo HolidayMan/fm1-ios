@@ -4,8 +4,8 @@ final class FM1UITests: XCTestCase {
         let app=XCUIApplication();app.launch()
         XCUIDevice.shared.orientation = .landscapeLeft
         app.buttons["Firmware library"].tap()
-        let stock=app.buttons.matching(NSPredicate(format:"label BEGINSWITH %@", "Stock-V15")).firstMatch
-        guard stock.waitForExistence(timeout:3) else {throw XCTSkip("Seed local firmware fixtures to run binary integration coverage.")}
+        let stock=findInstalled("Stock-V15",in:app)
+        guard stock.exists else {throw XCTSkip("Seed both local firmware fixtures to run binary integration coverage.")}
         stock.tap()
         XCTAssertTrue(app.buttons["Pause instrument"].waitForExistence(timeout:15))
         app.buttons["C4"].press(forDuration:0.7)
@@ -17,10 +17,21 @@ final class FM1UITests: XCTestCase {
         app.buttons["Resume instrument"].tap()
         XCTAssertTrue(app.buttons["Pause instrument"].waitForExistence(timeout:10))
         app.buttons["Firmware library"].tap()
-        app.buttons.matching(NSPredicate(format:"label BEGINSWITH %@", "Felucca-1.6.1")).firstMatch.tap()
+        let felucca=findInstalled("Felucca-1.6.1",in:app)
+        guard felucca.exists else {throw XCTSkip("Seed both local firmware fixtures to run binary integration coverage.")}
+        felucca.tap()
         XCTAssertTrue(app.buttons["Pause instrument"].waitForExistence(timeout:15))
         app.buttons["C4"].press(forDuration:0.7)
         let feluccaImage=XCTAttachment(screenshot:XCUIScreen.main.screenshot());feluccaImage.name="Felucca native panel";feluccaImage.lifetime = .keepAlways;add(feluccaImage)
+    }
+    private func findInstalled(_ prefix:String,in app:XCUIApplication)->XCUIElement {
+        let search=app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout:5))
+        search.tap();search.typeText(prefix+"\n")
+        let match=app.buttons.matching(NSPredicate(format:"label BEGINSWITH %@",prefix)).firstMatch
+        _=match.waitForExistence(timeout:3)
+        if match.exists && !match.isHittable {app.collectionViews.firstMatch.swipeUp()}
+        return match
     }
     func testHardwarePanelAndLibrary() {
         let app=XCUIApplication();app.launch()

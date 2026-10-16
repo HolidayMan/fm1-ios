@@ -25,3 +25,10 @@ The stock update omits the unit's original preset area. The emulator supplies it
 3. Decide distribution rights and App Review route for user-supplied binary firmware. Alternative if necessary: approved engines included in each signed release. Do not silently replace the requested generic loader with that alternative.
 4. Physical sound comparison, original-bank import, CoreMIDI and later AUv3, session restoration, resilient background checkpointing, accessibility and small-screen playing ergonomics.
 5. Final independent product name/branding, icon, metadata/privacy/support URLs, App Review notes, signing and TestFlight. No submission has occurred.
+
+## 2026-10-17 revision
+
+- The user requested a native phone-optimized interface and all accessible firmware choices. App/FirmwareCatalog.json pins 52 downloadable releases in https://thefirmwarehub.com/catalog.json (snapshot updated 2026-10-16 21:48 UTC) plus manufacturer Stock V15. Every download URL was fetched and verified against its size and SHA-256 locally. Inclusion is not boot/audio compatibility certification. Other projects outside this Hub remain importable; no claim of internet-wide completeness.
+- Catalogue metadata, authors and source/release links ship in the app. Firmware binaries remain in ignored Research/ and are downloaded on demand by the app. No source or binary has been published.
+- Manufacturer color choices are Black, Purple, Orange, Black-Green, Cool Gray, White-Blue, from https://www.m-vave.com/products-data.js (FM-1 product entry). Rendered colors are approximations.
+- Draft Apple inquiry is docs/apple-review-letter.md. It has not been sent, and no App Review approval is claimed.
