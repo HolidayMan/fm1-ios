@@ -1,0 +1,9 @@
+[package]
+name = "fm1-ios-core"
+version = "0.1.0"
+edition = "2021"
+[lib]
+crate-type = ["staticlib", "rlib"]
+[dependencies]
+fm1-core = { path = "../Vendor/fm1-core" }
+fm1-soc = { path = "../Vendor/fm1-soc" }

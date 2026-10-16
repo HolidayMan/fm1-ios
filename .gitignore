@@ -1,0 +1,8 @@
+Research/
+target/
+build/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+*.fwsc
+build-device/

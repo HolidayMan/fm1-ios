@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["Core", "Vendor/fm1-core", "Vendor/fm1-soc", "Vendor/fm1-isa"]
+[workspace.package]
+edition = "2021"
+license = "MIT"
+[profile.release]
+opt-level = 3
+lto = true
