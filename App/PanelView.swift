@@ -40,6 +40,8 @@ private struct PanelControl {
 private final class AccessibleControl:UIAccessibilityElement {
     var activate:(() -> Void)?
     var adjust:((Int) -> Void)?
+    var describeValue:(() -> String)?
+    override var accessibilityValue:String? {get{describeValue?()}set{}}
     override func accessibilityActivate()->Bool {activate?();return true}
     override func accessibilityIncrement(){adjust?(1)}
     override func accessibilityDecrement(){adjust?(-1)}
@@ -52,6 +54,13 @@ final class HardwarePanel:UIView {
     private var touches:[ObjectIdentifier:(Int,CGPoint)]=[:]
     private var held:Set<Int>=[]
     private var angles:[Int:CGFloat]=[:]
+    private struct TouchReceipt {
+        var began=0, ended=0, cancelled=0, downs=0, ups=0, peakTouches=0
+        var maxBeganDelay:Double=0
+    }
+    // Transient, opt-in UI-test observability: actual UIKit events, never persisted.
+    private let touchDiagnostics=ProcessInfo.processInfo.arguments.contains("--panel-touch-diagnostics")
+    private var receipts:[Int:TouchReceipt]=[:]
     private var keyboardRect=CGRect.zero
     private let labels=["FX","SEL","ENV","LFO","EDIT","GLO","HOME","SAVE","ARP","SEQ","PLAY\nSTOP","REC"]
     private let whites=[0,2,4,6,7,9,11,12,14,16,18,19,21,23,24,26]
@@ -94,6 +103,17 @@ final class HardwarePanel:UIView {
         accessibilityElements=controls.enumerated().map {i,c in
             let a=AccessibleControl(accessibilityContainer:self)
             a.accessibilityLabel=c.name;a.accessibilityIdentifier=c.name;a.accessibilityFrameInContainerSpace=c.rect
+            if case .key(let id)=c.kind {
+                a.describeValue={ [weak self] in
+                    guard let self else{return "Released"}
+                    let down=self.held.contains(id)
+                    if self.touchDiagnostics {
+                        let r=self.receipts[id] ?? TouchReceipt()
+                        return "held=\(down ? 1 : 0);began=\(r.began);ended=\(r.ended);cancelled=\(r.cancelled);downs=\(r.downs);ups=\(r.ups);peakTouches=\(r.peakTouches);maxBeganDelayMs=\(Int(r.maxBeganDelay*1000))"
+                    }
+                    return down ? "Pressed" : "Released"
+                }
+            }
             switch c.kind {
             case .master,.encoder:a.accessibilityTraits=[.adjustable];a.accessibilityHint="Swipe up or down to turn";a.adjust={ [weak self] n in self?.turn(i,n) }
             default:a.accessibilityTraits=[.button];a.activate={ [weak self] in
@@ -133,6 +153,13 @@ final class HardwarePanel:UIView {
             text("CHOOSE FIRMWARE ↑",CGRect(x:screen.minX,y:screen.midY+13,width:screen.width,height:16),10,0x94b9b2)
         }
         let led=instrument?.leds ?? []
+        func firmwareLight(_ rect:CGRect,_ intensity:Float) {
+            box(rect,2,0x18251c,0x112019)
+            // Core reports physical scan duty: full LED is 95 µs / 1100 µs.
+            // Preserve relative guide/background brightness across both backends.
+            UIColor(rgb:0xbaffad,alpha:CGFloat(max(0,min(1,intensity * (1100.0/95.0))))).setFill()
+            UIBezierPath(roundedRect:rect,cornerRadius:2).fill()
+        }
         for (i,c) in controls.enumerated() {
             switch c.kind {
             case .master,.encoder:
@@ -146,10 +173,13 @@ final class HardwarePanel:UIView {
                 ctx.rotate(by:rotation);box(CGRect(x:-1.5,y:-r.height*0.41,width:3,height:r.height*0.25),1.5,0xf1f6f1,0xc5d8cf);ctx.restoreGState()
                 text(c.name,CGRect(x:c.rect.midX-45,y:c.rect.minY-15,width:90,height:13),10,p.ink,.semibold)
             case .key(let id):
-                let down=held.contains(id), active=id<led.count && led[id]>0.08
+                let down=held.contains(id), intensity=id<led.count ? led[id] : 0
                 if id>=14 {
                     box(c.rect,9,down ? 0x688f83 : p.control,down ? 0x36574d : p.controlBottom,down ? 0xa3ffd7 : p.accent)
-                    box(CGRect(x:c.rect.midX-2,y:c.rect.minY+10,width:4,height:max(16,c.rect.height*0.4)),2,active || down ? 0xbaffad : 0xf0f3e8,active || down ? 0x68db68 : 0xc7d0c7)
+                    box(CGRect(x:c.rect.midX-2,y:c.rect.minY+10,width:4,height:max(16,c.rect.height*0.4)),2,down ? 0xbaffad : 0xf0f3e8,down ? 0x68db68 : 0xc7d0c7)
+                    // Touch slit follows the finger immediately. This separate small
+                    // lamp preserves firmware guide/step/voice brightness and timing.
+                    firmwareLight(CGRect(x:c.rect.midX-5,y:c.rect.maxY-6,width:10,height:2),intensity)
                     if let k=blacks.firstIndex(where:{$0.0==id-14}),k<10,c.rect.height>45 {
                         text(["OP1","OP2","OP3","OP4","OP5","OP6","PIT","GLO","MONO","POLY"][k],CGRect(x:c.rect.minX,y:c.rect.maxY-16,width:c.rect.width,height:12),9,0xf0f2eb)
                     }
@@ -157,7 +187,7 @@ final class HardwarePanel:UIView {
                     box(c.rect,7,down ? 0x688f83 : p.control,down ? 0x36574d : p.controlBottom,down ? 0xa3ffd7 : p.accent)
                     let title=id<2 ? c.name : labels[id-2]
                     text(title,CGRect(x:c.rect.minX+1,y:c.rect.midY-(title.contains("\n") ? 12 : 6),width:c.rect.width-2,height:28),id<2 ? 12 : 11,0xf6f7f1,.semibold)
-                    if active {box(CGRect(x:c.rect.midX-7,y:c.rect.minY+3,width:14,height:2),1,0xc1ff8c,0x72cd4b)}
+                    firmwareLight(CGRect(x:c.rect.midX-7,y:c.rect.minY+3,width:14,height:2),intensity)
                 }
             case .screen:break
             }
@@ -187,6 +217,9 @@ final class HardwarePanel:UIView {
     }
     private func press(_ i:Int,_ down:Bool) {
         if case .key(let id)=controls[i].kind {
+            if touchDiagnostics {
+                if down {receipts[id,default:TouchReceipt()].downs += 1} else {receipts[id,default:TouchReceipt()].ups += 1}
+            }
             if down {held.insert(id)} else {held.remove(id)}
             instrument?.key(id,down);setNeedsDisplay()
         }
@@ -202,6 +235,13 @@ final class HardwarePanel:UIView {
         for t in input {let p=point(t);if let i=hit(p) {
             let already=touches.values.contains{$0.0==i}
             touches[ObjectIdentifier(t)]=(i,p)
+            if touchDiagnostics,case .key(let id)=controls[i].kind {
+                var receipt=receipts[id] ?? TouchReceipt()
+                receipt.began += 1
+                receipt.peakTouches=max(receipt.peakTouches,touches.values.filter{$0.0==i}.count)
+                receipt.maxBeganDelay=max(receipt.maxBeganDelay,ProcessInfo.processInfo.systemUptime-t.timestamp)
+                receipts[id]=receipt
+            }
             if !already {press(i,true)}
         }}
     }
@@ -233,12 +273,16 @@ final class HardwarePanel:UIView {
     }
     override func touchesEnded(_ input:Set<UITouch>,with event:UIEvent?) {
         for t in input {if let (i,_)=touches.removeValue(forKey:ObjectIdentifier(t)),i>=0 {
+            if touchDiagnostics,case .key(let id)=controls[i].kind {receipts[id,default:TouchReceipt()].ended += 1}
             if !touches.values.contains(where:{$0.0==i}) {press(i,false)}
             if case .screen=controls[i].kind,controls[i].rect.contains(point(t)){showScreen?()}
         }}
     }
     override func touchesCancelled(_ input:Set<UITouch>,with event:UIEvent?) {
-        for t in input {if let (i,_)=touches.removeValue(forKey:ObjectIdentifier(t)),i>=0,!touches.values.contains(where:{$0.0==i}) {press(i,false)}}
+        for t in input {if let (i,_)=touches.removeValue(forKey:ObjectIdentifier(t)),i>=0 {
+            if touchDiagnostics,case .key(let id)=controls[i].kind {receipts[id,default:TouchReceipt()].cancelled += 1}
+            if !touches.values.contains(where:{$0.0==i}) {press(i,false)}
+        }}
     }
     override func didMoveToWindow() {if window==nil {for id in held {instrument?.key(id,false)};held.removeAll();touches.removeAll()}}
 }

@@ -227,6 +227,21 @@ pub unsafe extern "C" fn instrument_key(m: *mut Instrument, id: u32, down: bool)
         }
     }
 }
+/// Host suspension: release held inputs and cancel native edges not yet rendered.
+#[no_mangle]
+pub unsafe extern "C" fn instrument_release_all(m: *mut Instrument) {
+    if let Some(m) = m.as_mut() {
+        match m {
+            Instrument::Interpreter(m) => {
+                for id in 0..41 {
+                    m.soc.periph.apply(&Action::Key { id, down: false });
+                }
+            }
+            #[cfg(fm1_native_sloop)]
+            Instrument::Native(m) => m.release_all(),
+        }
+    }
+}
 #[no_mangle]
 pub unsafe extern "C" fn instrument_encoder(m: *mut Instrument, id: u32, delta: i32) {
     if let Some(m) = m.as_mut() {

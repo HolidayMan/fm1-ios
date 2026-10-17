@@ -173,6 +173,7 @@ final class AudioStressTests: XCTestCase {
         let playingBefore=try XCTUnwrap(playingStart.nativeWorkload)
         let playingAfter=try XCTUnwrap(steadyEnd.nativeWorkload)
         let loopAfter=try XCTUnwrap(loopOnlyEnd.nativeWorkload)
+        XCTAssertEqual(playingAfter.droppedKeyTransitions,0,"Bounded native input queue must not lose transitions")
         XCTAssertGreaterThan(loopAfter.nonzeroDSPSamples,playingBefore.nonzeroDSPSamples,"Recorded loop must produce audio before live pad attacks")
         XCTAssertGreaterThanOrEqual(playingAfter.framesWhilePlaying,playingBefore.framesWhilePlaying,"Native workload counters must not reset")
         let playingFrames=playingAfter.framesWhilePlaying >= playingBefore.framesWhilePlaying ? playingAfter.framesWhilePlaying-playingBefore.framesWhilePlaying : 0

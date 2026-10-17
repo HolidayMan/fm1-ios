@@ -42,10 +42,10 @@ struct InstrumentView:View {
                     Button {about=true} label:{Image(systemName:"info.circle").frame(width:31,height:28)}.accessibilityLabel("About")
                 }.foregroundStyle(.white.opacity(0.9)).padding(.horizontal,9).frame(height:29)
                 PanelView(instrument:instrument,finish:finish,showScreen:{display=true})
-            }.padding(.horizontal,3).padding(.bottom,3)
+            }.padding(.horizontal,3)
                 .frame(width:geo.size.width,height:geo.size.height)
                 .background(Color(white:0.055))
-        }.ignoresSafeArea(edges:.bottom).statusBarHidden().persistentSystemOverlays(.hidden)
+        }.ignoresSafeArea(edges:.bottom).statusBarHidden().persistentSystemOverlays(.hidden).defersSystemGestures(on:.bottom)
         .sheet(isPresented:$library) {FirmwareLibraryView(instrument:instrument)}
         .sheet(isPresented:$choosingFinish) {
             NavigationStack {

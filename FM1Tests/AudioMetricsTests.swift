@@ -25,6 +25,14 @@ final class AudioMetricsTests: XCTestCase {
         XCTAssertEqual(roundTrip.nativeWorkload?.peakTrackSynthVoices,[4,3,2])
         XCTAssertEqual(roundTrip.nativeWorkload?.configuredEffectMask,2047)
         XCTAssertNil(NativeWorkloadDiagnostics(counters:[0]))
+        var beforeQueue=try JSONSerialization.jsonObject(with:encoded) as! [String:Any]
+        var oldWorkload=beforeQueue["nativeWorkload"] as! [String:Any]
+        for key in ["droppedKeyTransitions","keyTransitionQueueHighWater","pendingKeyTransitions"] {oldWorkload.removeValue(forKey:key)}
+        beforeQueue["nativeWorkload"]=oldWorkload
+        let oldData=try JSONSerialization.data(withJSONObject:beforeQueue)
+        let oldReport=try JSONDecoder().decode(AudioDiagnostics.self,from:oldData)
+        XCTAssertNil(oldReport.nativeWorkload?.droppedKeyTransitions)
+        XCTAssertEqual(oldReport.nativeWorkload?.peakSharedSynthVoices,8)
         XCTAssertNil(AudioBackend(coreCode: 0))
         XCTAssertEqual(AudioBackend(coreCode: 1), .interpreter)
         XCTAssertEqual(AudioBackend(coreCode: 2), .native)

@@ -137,3 +137,54 @@ its origin is unknown and it was retained. Both generations pass header CRC,
 payload CRC and the project's own FNV checksum. No phone data was restored or
 overwritten for this audit. Private receipt:
 `Research/SequencerDiagnosis/retention-native-build5.json`.
+
+### LED levels and firmware UI clock correction
+
+A subsequent touch report exposed two native bridge defects. The upstream API's
+LED categories (full/guide/backlight) had been divided by three and treated as
+brightness, so the drum track's deliberately dim white-key landmarks appeared
+fully active. The bridge now reports approximate physical LED on-time fractions,
+as the interpreter does: an approximately 95 µs full pulse, 4 µs guide pulse and
+0.5–2 µs backlight pulse per approximately 1.1 ms scan frame.
+
+The source UI's frame counters and six-frame hit lamps had also advanced only
+when the host requested a 15 Hz snapshot, stretching an intended approximately
+100 ms flash to approximately 400 ms. `ui_input`, `ui_leds` and `ui_draw` now run
+in the audio-clock-driven 16 ms firmware main pass. Host snapshots copy cached
+state without advancing those timers. Focused tests cover that separation, all
+27 physical note-key mappings, dim guides and hit-light expiry while snapshots
+are absent.
+
+Some cross-row activity is intentional SLOOP behavior: on the drum track a black
+key plays the white key immediately to its left, and the drum activity lamp uses
+that white key. This firmware activity is separate from immediate local touch
+feedback. The native core has no distinct input route for the two visual rows.
+
+### Short note transitions between audio batches
+
+The native bridge previously exposed only the latest piano-key mask to each
+firmware audio block. A press and release delivered before the next host render
+could therefore cancel without starting a voice. An ABI reproduction with a
+5 ms tap produced no audio, while a 20 ms control tap sounded normally.
+
+Piano-key transitions now use a bounded 256-edge queue. Different keys can change
+within one firmware CTL block, preserving chords; opposite transitions on one
+key span successive CTL blocks (32 frames, approximately 0.73 ms). Function
+buttons retain their existing path. Under deliberate overflow, the queue removes
+a complete opposite-edge pair, counts both dropped edges and retains the final
+release state. Workload counters 13–15 report dropped edges, queue high-water
+mark and pending edges; ordinary integration must have zero drops.
+
+Host pause uses an explicit release-all operation: it discards unrendered piano
+transitions and pending native press edges, and releases physical keys. Sounding
+notes receive their ordinary key-up on the next CTL, preserving release tails.
+This prevents a tap queued just before pause from replaying on resume.
+
+All 75 workspace release tests pass, including queued short taps, repeated edges,
+two-key chords, release-all, bounded overflow, pause-before-render cancellation
+and ordinary release-tail equivalence. The same ABI reproduction now
+produces 44,322 nonzero PCM samples for the 5 ms tap. The 20 ms control preserves
+its earlier PCM exactly. Private evidence is in
+`Research/NativeSloop/rapid-edge-probe/after-summary.json` and
+`Research/NativeSloop/native-input-final-workspace-tests.log`; final platform
+archives and source receipts use `fm1-native-sloop-build6-final-*` filenames.

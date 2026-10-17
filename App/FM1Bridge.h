@@ -7,6 +7,7 @@ uint32_t instrument_backend(const void *);
 uint32_t instrument_workload_metrics(void *, uint64_t *, uint32_t);
 size_t instrument_render(void *, float *, size_t);
 void instrument_key(void *, uint32_t, bool);
+void instrument_release_all(void *);
 void instrument_encoder(void *, uint32_t, int32_t);
 void instrument_volume(void *, uint32_t);
 uint32_t instrument_snapshot(void *, uint32_t *, float *);

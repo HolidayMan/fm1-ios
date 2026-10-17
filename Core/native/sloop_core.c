@@ -349,6 +349,8 @@ static void fel_main_pass(void)
     fel_editor();
     fel_buttons();                       /* (2.7) what REMOTE holds now, as the next scan would read it */
     ui_input();
+    ui_leds();
+    ui_draw();
     autosave_tick();                     /* the working project into "flash", when quiet */
     sections_flush();                    /* the live sections and the recorded song, when quiet */
 }
@@ -364,6 +366,8 @@ void FEL(init)(void)   /* main.c fm1_main, up to its loop: the stored settings a
     panel_init();
     felucca_init();
     usb.config = 1;
+    ui_leds();
+    ui_draw();
 }
 
 const char *FEL(version)(void) { return FELUCCA_VERSION; }   /* ui.c's: "SLOOP 2.6" */
@@ -561,8 +565,8 @@ void FEL(knob)(uint32_t role, int32_t steps)
 
 void FEL(draw)(uint16_t *screen)
 {
-    ui_leds();                           /* (as on the device: the LEDs, which FEL(leds) reads, then the screen) */
-    ui_draw();
+    /* Frame timers and LED pulses advance with the audio-driven firmware main
+     * loop. Host snapshots only read its cached display, at any polling rate. */
     if (screen)
         memcpy(screen, host_screen, sizeof host_screen);
 }
@@ -762,20 +766,35 @@ void FEL(physical_key)(uint32_t id, int down)
     if (down) host_held |= bit; else host_held &= ~bit;
     fel_buttons();
 }
+
+/* Host suspension cancels unconsumed physical input, without advancing audio or
+ * changing the project/transport. keyboard_block releases sounding held notes
+ * on the next CTL through its ordinary key-up path. */
+void FEL(release_all)(void)
+{
+    host_held = 0;
+    fel_buttons();
+    fm1_in.notes = 0;
+    host_notes = 0;
+    host_pressed = 0;
+}
 void FEL(physical_encoder)(uint32_t id, int32_t delta)
 {
     if (id < 7u) host_enc[id] += delta;
 }
-void FEL(physical_leds)(uint8_t *out)
+void FEL(physical_leds)(float *out)
 {
     for (uint32_t id = 0; id < 41u; ++id) {
         out[id] = 0;
         for (uint32_t p = 0; p < 16u; ++p)
             for (uint32_t r = 1; r < 5u; ++r)
                 if (FM1_KEYMAP[r][p] == (int8_t)id)
-                    out[id] = ((fm1_led[p] >> r) & 1u) ? 3u :
-                              ((fm1_led_dim[p] >> r) & 1u) ? 2u :
-                              ((fm1_led_bg[p] >> r) & 1u) ? 1u : 0u;
+                    /* Same on-time fraction contract as the interpreter's led_take:
+                     * 11 columns at 10 kHz, full pulse ~95 us, guide 4 us,
+                     * menu backlight 0.5/1/2 us (pinned fm1_input.h/panel.c). */
+                    out[id] = ((fm1_led[p] >> r) & 1u) ? 95000.0f / 1100000.0f :
+                              ((fm1_led_dim[p] >> r) & 1u) ? 4000.0f / 1100000.0f :
+                              ((fm1_led_bg[p] >> r) & 1u) ? (float)fm1_led_bg_ns / 1100000.0f : 0.0f;
     }
 }
 
@@ -785,3 +804,5 @@ uint32_t FEL(workload_metrics)(uint64_t *out, uint32_t capacity)
     for (uint32_t i = 0; i < capacity; ++i) out[i] = host_metrics[i];
     return capacity;
 }
+
+uint32_t FEL(ui_frames)(void) { return ui.frame; }

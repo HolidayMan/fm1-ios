@@ -228,7 +228,7 @@ final class Instrument: ObservableObject {
         if playing { publishDiagnostics(force: true) }
         generation += 1; playing = false; producerScheduled = false
         refillSignal?.cancel(); refillSignal = nil
-        for id in 0..<41 { instrument_key(machine, UInt32(id), false) }
+        instrument_release_all(machine)
         sourceNode = nil; engine = nil; audioRing = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
@@ -380,11 +380,14 @@ struct NativeWorkloadDiagnostics: Codable, Equatable {
     let framesWhilePlaying: UInt64
     let peakTrackSynthVoices: [UInt64]
     let peakLiveGrains: UInt64
+    // Optional so aggregate reports produced before the input queue remain readable.
+    let droppedKeyTransitions, keyTransitionQueueHighWater, pendingKeyTransitions: UInt64?
     init?(counters:[UInt64]) {
         guard counters.count == 16 else {return nil}
         renderedFrames=counters[0];peakSharedSynthVoices=counters[1];peakDrumVoices=counters[2];voiceKills=counters[3]
         nonzeroDSPSamples=counters[4];peakRawQ15Magnitude=counters[5];configuredEffectMask=counters[6];activeTrackMask=counters[7]
         framesWhilePlaying=counters[8];peakTrackSynthVoices=Array(counters[9...11]);peakLiveGrains=counters[12]
+        droppedKeyTransitions=counters[13];keyTransitionQueueHighWater=counters[14];pendingKeyTransitions=counters[15]
     }
 }
 
