@@ -20,8 +20,11 @@ import SwiftUI
         WindowGroup {
             InstrumentView(instrument:instrument)
                 .preferredColorScheme(.dark)
-                .onAppear {instrument.sceneChanged(active:scenePhase == .active,autoStart:automaticStartupAllowed)}
-                .onChange(of:scenePhase) {phase in instrument.sceneChanged(active:phase == .active,autoStart:automaticStartupAllowed)}
+                .onAppear {instrument.sceneChanged(active:scenePhase == .active,autoStart:automaticStartupAllowed);ControlHaptics.shared.prepareButton()}
+                .onChange(of:scenePhase) {phase in
+                    instrument.sceneChanged(active:phase == .active,autoStart:automaticStartupAllowed)
+                    if phase == .active {ControlHaptics.shared.prepareButton()}
+                }
         }
     }
 }

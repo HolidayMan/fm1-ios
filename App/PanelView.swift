@@ -48,6 +48,7 @@ private final class AccessibleControl:UIAccessibilityElement {
 }
 final class HardwarePanel:UIView {
     weak var instrument:Instrument?
+    var haptics=ControlHaptics.shared
     var finish:PanelFinish = .black
     var showScreen:(() -> Void)?
     private var controls:[PanelControl]=[]
@@ -118,7 +119,7 @@ final class HardwarePanel:UIView {
             case .master,.encoder:a.accessibilityTraits=[.adjustable];a.accessibilityHint="Swipe up or down to turn";a.adjust={ [weak self] n in self?.turn(i,n) }
             default:a.accessibilityTraits=[.button];a.activate={ [weak self] in
                 guard let self else{return}
-                if case .screen=c.kind {self.showScreen?();ControlHaptics.shared.button();return}
+                if case .screen=c.kind {self.showScreen?();self.haptics.button();return}
                 self.press(i,true);DispatchQueue.main.asyncAfter(deadline:.now()+0.15){self.press(i,false)}
             }
             }
@@ -223,7 +224,7 @@ final class HardwarePanel:UIView {
             let newlyPressed=down && !held.contains(id)
             if down {held.insert(id)} else {held.remove(id)}
             instrument?.key(id,down);setNeedsDisplay()
-            if newlyPressed {ControlHaptics.shared.button()}
+            if newlyPressed {haptics.button()}
         }
     }
     private func turn(_ i:Int,_ delta:Int) {
@@ -241,9 +242,10 @@ final class HardwarePanel:UIView {
             changed=UInt32(previous*1023) != UInt32(next*1023)
         default:break
         };setNeedsDisplay()
-        if changed {ControlHaptics.shared.detent()}
+        if changed {haptics.detent()}
     }
     override func touchesBegan(_ input:Set<UITouch>,with event:UIEvent?) {
+        haptics.prepareButton()
         for t in input {let p=point(t);if let i=hit(p) {
             let already=touches.values.contains{$0.0==i}
             touches[ObjectIdentifier(t)]=(i,p)
@@ -287,7 +289,7 @@ final class HardwarePanel:UIView {
         for t in input {if let (i,_)=touches.removeValue(forKey:ObjectIdentifier(t)),i>=0 {
             if touchDiagnostics,case .key(let id)=controls[i].kind {receipts[id,default:TouchReceipt()].ended += 1}
             if !touches.values.contains(where:{$0.0==i}) {press(i,false)}
-            if case .screen=controls[i].kind,controls[i].rect.contains(point(t)){showScreen?();ControlHaptics.shared.button()}
+            if case .screen=controls[i].kind,controls[i].rect.contains(point(t)){showScreen?();haptics.button()}
         }}
     }
     override func touchesCancelled(_ input:Set<UITouch>,with event:UIEvent?) {
@@ -296,5 +298,8 @@ final class HardwarePanel:UIView {
             if !touches.values.contains(where:{$0.0==i}) {press(i,false)}
         }}
     }
-    override func didMoveToWindow() {if window==nil {for id in held {instrument?.key(id,false)};held.removeAll();touches.removeAll()}}
+    override func didMoveToWindow() {
+        if window == nil {for id in held {instrument?.key(id,false)};held.removeAll();touches.removeAll()}
+        else {haptics.prepareButton()}
+    }
 }

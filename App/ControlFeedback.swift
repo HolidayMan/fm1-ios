@@ -19,17 +19,29 @@ struct HapticRateGate {
 }
 
 @MainActor final class ControlHaptics {
-    static let shared=ControlHaptics()
-    private let press=UIImpactFeedbackGenerator(style:.soft)
-    private let selection=UISelectionFeedbackGenerator()
+    static let shared:ControlHaptics = {
+        // Use the standard light pulse: soft at 35% can be hard to feel as button
+        // confirmation. Selection feedback and the shared burst cap stay intact.
+        let press=UIImpactFeedbackGenerator(style:.light)
+        let selection=UISelectionFeedbackGenerator()
+        return ControlHaptics(button:{press.impactOccurred();press.prepare()},
+                              detent:{selection.selectionChanged();selection.prepare()},
+                              prepareButton:{press.prepare()})
+    }()
+    private let emitButton:()->Void,emitDetent:()->Void,warmButton:()->Void
+    private let now:()->TimeInterval
     private var gate=HapticRateGate()
-    private init() {}
+    // Injectable outputs verify dispatch without pretending a simulator has a Taptic Engine.
+    init(button:@escaping ()->Void,detent:@escaping ()->Void,prepareButton:@escaping ()->Void={},now:@escaping ()->TimeInterval={ProcessInfo.processInfo.systemUptime}) {
+        emitButton=button;emitDetent=detent;warmButton=prepareButton;self.now=now
+    }
+    func prepareButton() {warmButton()}
     func button() {
-        guard gate.allow(at:ProcessInfo.processInfo.systemUptime) else{return}
-        press.impactOccurred(intensity:0.35);press.prepare()
+        guard gate.allow(at:now()) else{return}
+        emitButton()
     }
     func detent() {
-        guard gate.allow(at:ProcessInfo.processInfo.systemUptime) else{return}
-        selection.selectionChanged();selection.prepare()
+        guard gate.allow(at:now()) else{return}
+        emitDetent()
     }
 }
