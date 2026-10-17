@@ -23,7 +23,7 @@ struct InstrumentView:View {
         GeometryReader {geo in
             VStack(spacing:3) {
                 HStack(spacing:10) {
-                    Button {library=true} label:{
+                    Button {library=true;ControlHaptics.shared.button()} label:{
                         HStack(spacing:7) {
                             Circle().fill(instrument.running ? Color.green : Color.gray).frame(width:5,height:5)
                             Text(instrument.selected?.name ?? "Choose firmware").lineLimit(1)
@@ -33,13 +33,13 @@ struct InstrumentView:View {
                     Spacer(minLength:4)
                     if instrument.busy {ProgressView().controlSize(.mini)}
                     Text(instrument.status).font(.system(size:9)).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth:160,alignment:.trailing)
-                    Button {instrument.running ? instrument.pause() : instrument.resume()} label:{Image(systemName:instrument.running ? "pause.fill" : "play.fill").frame(width:31,height:28)}
+                    Button {instrument.running ? instrument.pause() : instrument.resume();ControlHaptics.shared.button()} label:{Image(systemName:instrument.running ? "pause.fill" : "play.fill").frame(width:31,height:28)}
                         .disabled(instrument.selected == nil || instrument.busy).accessibilityLabel(instrument.running ? "Pause instrument" : "Resume instrument")
-                    Button {instrument.toggleMute()} label:{Image(systemName:instrument.muted ? "speaker.slash" : "speaker.wave.2").frame(width:31,height:28)}.accessibilityLabel("Mute audio")
-                    Button {choosingFinish=true} label:{
+                    Button {instrument.toggleMute();ControlHaptics.shared.button()} label:{Image(systemName:instrument.muted ? "speaker.slash" : "speaker.wave.2").frame(width:31,height:28)}.accessibilityLabel("Mute audio")
+                    Button {choosingFinish=true;ControlHaptics.shared.button()} label:{
                         HStack(spacing:0) {Circle().fill(finish.swatch).frame(width:16,height:16);Circle().fill(finish.secondarySwatch).frame(width:16,height:16).padding(.leading,-7)}.frame(width:31,height:28)
                     }.accessibilityLabel("Panel color").accessibilityValue(finish.rawValue)
-                    Button {about=true} label:{Image(systemName:"info.circle").frame(width:31,height:28)}.accessibilityLabel("About")
+                    Button {about=true;ControlHaptics.shared.button()} label:{Image(systemName:"info.circle").frame(width:31,height:28)}.accessibilityLabel("About")
                 }.foregroundStyle(.white.opacity(0.9)).padding(.horizontal,9).frame(height:29)
                 PanelView(instrument:instrument,finish:finish,showScreen:{display=true})
             }.padding(.horizontal,3)
@@ -52,7 +52,7 @@ struct InstrumentView:View {
                 VStack {
                     LazyVGrid(columns:[GridItem(.flexible()),GridItem(.flexible())],spacing:8) {
                         ForEach(PanelFinish.allCases) {option in
-                            Button {finishName=option.rawValue;choosingFinish=false} label:{
+                            Button {finishName=option.rawValue;choosingFinish=false;ControlHaptics.shared.button()} label:{
                                 HStack(spacing:12) {
                                     HStack(spacing:0) {Circle().fill(option.swatch).frame(width:28,height:28);Circle().fill(option.secondarySwatch).frame(width:28,height:28).padding(.leading,-10)}
                                     Text(option.rawValue).font(.system(size:14,weight:.medium)).foregroundStyle(.primary)

@@ -202,3 +202,12 @@ Clean signed Release 0.3.1 (6) installed and launched successfully; installed-ap
 
 
 Post-delivery checksum-aware audit: current valid SLOOP project advances autosave generation 3→4, changing 61 raw bytes only in autosave B. Tracks 2/3/4 remain byte-identical, including the five recorded drum events; samples, stored sections, settings, presets and FM6 banks are unchanged. Track 1 has six newly filled monophonic steps (0,2,6,9,12,14), preset 0→1 and associated parameter changes; global Swing changes 81→26. Attribution is unknown. The latest valid phone state is retained, with both backup generations preserved; no rollback was performed. Source/path review found no owner-Firmwares write route in the paused HID test or isolated audio tests. Full receipt: `build-device/NativeSloop6Final/retention-detailed.json`. All three package files and Stock/Felucca flash are byte-identical to the pre-update backup.
+
+
+## Control haptics and fine adjustment — 0.3.2 (7)
+
+Panel/function/piano button presses and the compact toolbar use a soft UIKit impact; encoders and MASTER use selection feedback on real detent changes. Haptics run on the main thread, after dispatching the control action; neither the audio callback nor the native worker invokes feedback generators. A shared 50 ms gate coalesces chords and rapid drag events. Key releases and firmware LED updates do not trigger haptics. MASTER emits no feedback when clamping leaves its quantized ADC value unchanged.
+
+Drag sensitivity changes from 3 to 4 points per detent (25% fewer steps for the same motion). Consumed-anchor remainder and reversal behavior remain intact, MASTER keeps its prior 0.015 volume increment per detent, and accessibility adjustment remains one step. Three focused tests cover threshold/remainder, reversal/large motion and feedback rate coalescing. Nine final simulator checks passed including actual bottom-edge/multitouch HID and existing finger/firmware lamp rendering checks. The final source freeze covers 27 app/test files. Core/audio implementation is unchanged and its 45-file source receipts still match; the generic Rust workspace regression also passed 63 tests. Haptic sensation cannot be accepted in the simulator and requires use on the physical phone.
+
+Signed clean Release and test/UI artifacts are under `build-device/NativeSloop7Final`; their source freeze and strict signatures were verified before delivery. Physical execution/delivery results follow below when complete.

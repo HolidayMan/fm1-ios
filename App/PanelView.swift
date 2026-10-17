@@ -118,7 +118,7 @@ final class HardwarePanel:UIView {
             case .master,.encoder:a.accessibilityTraits=[.adjustable];a.accessibilityHint="Swipe up or down to turn";a.adjust={ [weak self] n in self?.turn(i,n) }
             default:a.accessibilityTraits=[.button];a.activate={ [weak self] in
                 guard let self else{return}
-                if case .screen=c.kind {self.showScreen?();return}
+                if case .screen=c.kind {self.showScreen?();ControlHaptics.shared.button();return}
                 self.press(i,true);DispatchQueue.main.asyncAfter(deadline:.now()+0.15){self.press(i,false)}
             }
             }
@@ -220,16 +220,28 @@ final class HardwarePanel:UIView {
             if touchDiagnostics {
                 if down {receipts[id,default:TouchReceipt()].downs += 1} else {receipts[id,default:TouchReceipt()].ups += 1}
             }
+            let newlyPressed=down && !held.contains(id)
             if down {held.insert(id)} else {held.remove(id)}
             instrument?.key(id,down);setNeedsDisplay()
+            if newlyPressed {ControlHaptics.shared.button()}
         }
     }
     private func turn(_ i:Int,_ delta:Int) {
+        var changed=false
         switch controls[i].kind {
-        case .encoder(let id):angles[i,default:0] += CGFloat(delta)*0.10;instrument?.encoder(id,delta)
-        case .master:instrument?.master((instrument?.volume ?? 0.7)+Double(delta)*0.015)
+        case .encoder(let id):
+            guard delta != 0 else{return}
+            angles[i,default:0] += CGFloat(delta)*0.10;instrument?.encoder(id,delta)
+            changed=true
+        case .master:
+            guard let instrument else{return}
+            let previous=instrument.volume,next=min(1,max(0,previous+Double(delta)*0.015))
+            guard next != previous else{return}
+            instrument.master(next)
+            changed=UInt32(previous*1023) != UInt32(next*1023)
         default:break
         };setNeedsDisplay()
+        if changed {ControlHaptics.shared.detent()}
     }
     override func touchesBegan(_ input:Set<UITouch>,with event:UIEvent?) {
         for t in input {let p=point(t);if let i=hit(p) {
@@ -256,8 +268,8 @@ final class HardwarePanel:UIView {
             }
             switch controls[i].kind {
             case .encoder,.master:
-                let delta=Int((last.y-p.y)/3)
-                if delta != 0 {turn(i,delta);touches[key]=(i,CGPoint(x:p.x,y:last.y-CGFloat(delta)*3))}
+                let movement=KnobDrag.update(anchorY:last.y,currentY:p.y)
+                if movement.steps != 0 {turn(i,movement.steps);touches[key]=(i,CGPoint(x:p.x,y:movement.anchorY))}
             case .key(let id) where id>=14:
                 let next=hit(p)
                 if next != i {
@@ -275,7 +287,7 @@ final class HardwarePanel:UIView {
         for t in input {if let (i,_)=touches.removeValue(forKey:ObjectIdentifier(t)),i>=0 {
             if touchDiagnostics,case .key(let id)=controls[i].kind {receipts[id,default:TouchReceipt()].ended += 1}
             if !touches.values.contains(where:{$0.0==i}) {press(i,false)}
-            if case .screen=controls[i].kind,controls[i].rect.contains(point(t)){showScreen?()}
+            if case .screen=controls[i].kind,controls[i].rect.contains(point(t)){showScreen?();ControlHaptics.shared.button()}
         }}
     }
     override func touchesCancelled(_ input:Set<UITouch>,with event:UIEvent?) {
