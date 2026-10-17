@@ -2,6 +2,33 @@ import XCTest
 @testable import FM1
 
 final class AudioMetricsTests: XCTestCase {
+    func testEngineNoticesAreBundled() throws {
+        for name in ["LICENSE-fm1-emu", "NOTICE-native-sloop", "LICENSE-native-sloop"] {
+            let url = try XCTUnwrap(Bundle.main.url(forResource: name, withExtension: nil), "Missing bundled notice: \(name)")
+            XCTAssertGreaterThan(try String(contentsOf: url).count, 50)
+        }
+    }
+    func testBackendDiagnosticsRoundTripAndReadLegacyReports() throws {
+        var report = AudioDiagnostics()
+        report.backend = .native
+        report.nativeWorkload = NativeWorkloadDiagnostics(counters:[100,8,6,0,90,32000,2047,15,99,4,3,2,6,0,0,0])
+        let encoded = try JSONEncoder().encode(report)
+        XCTAssertEqual(try JSONDecoder().decode(AudioDiagnostics.self, from: encoded).backend, .native)
+        var legacy = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+        legacy.removeValue(forKey: "backend")
+        legacy.removeValue(forKey: "nativeWorkload")
+        let legacyData = try JSONSerialization.data(withJSONObject: legacy)
+        let decodedLegacy=try JSONDecoder().decode(AudioDiagnostics.self, from: legacyData)
+        XCTAssertNil(decodedLegacy.backend);XCTAssertNil(decodedLegacy.nativeWorkload)
+        let roundTrip=try JSONDecoder().decode(AudioDiagnostics.self, from: encoded)
+        XCTAssertEqual(roundTrip.nativeWorkload?.peakSharedSynthVoices,8)
+        XCTAssertEqual(roundTrip.nativeWorkload?.peakTrackSynthVoices,[4,3,2])
+        XCTAssertEqual(roundTrip.nativeWorkload?.configuredEffectMask,2047)
+        XCTAssertNil(NativeWorkloadDiagnostics(counters:[0]))
+        XCTAssertNil(AudioBackend(coreCode: 0))
+        XCTAssertEqual(AudioBackend(coreCode: 1), .interpreter)
+        XCTAssertEqual(AudioBackend(coreCode: 2), .native)
+    }
     func testActualAudioBudgetAndMissingFramesAreMeasuredSeparately() {
         var health = AudioHealth()
         health.record(renderSeconds: 0.01, validFrames: 441, frames: 441)

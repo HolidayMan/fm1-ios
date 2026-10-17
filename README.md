@@ -1,6 +1,6 @@
 # FM-1 for iOS — local prototype
 
-Native adaptive landscape FM-1 panel (UIKit/Core Graphics + SwiftUI), with the real pi32v2 interpreter from **fm1-emu**. No web view, factory service, account or telemetry. Firmware downloads are interpreted only inside the emulated synthesizer.
+Native adaptive landscape FM-1 panel (UIKit/Core Graphics + SwiftUI), with a hybrid audio engine: exact pinned SLOOP 2.7.1 can use compiled firmware source, while other packages use the pi32v2 interpreter from **fm1-emu**. No web view, factory service, account or telemetry. Downloaded packages cannot generate or modify executable host code.
 
 This project is developed directly in the Software Factory project context. **The Software Factory queue is not used or changed.**
 
@@ -18,6 +18,13 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim
 Open `FM1.xcodeproj`; choose your own signing team for a physical device. Build the Rust target first. Current simulator library supports Apple Silicon.
 
 The commands above build the generic interpreter. An optimized local build additionally requires private generated kernels and their verified manifest; set `FM1_STATIC_KERNELS` to the absolute header path when building Rust. `Core/tools/build_static_core.py` verifies those inputs and freezes a target-specific archive with a source/hash receipt. The generator is in `Vendor/fm1-core/tools/generate_static_kernels.py`; firmware-derived inputs and outputs remain local under ignored `Research/Generated`. No runtime JIT is used.
+
+A local hybrid build can additionally compile exact SLOOP 2.7.1 source for its
+pinned package, with the binary interpreter retained for every unmatched package.
+This addresses the recorded-sequencer CPU bottleneck. The source-native backend
+has GPL-3.0 notices and a different hardware/main-loop model; see
+[docs/native-sloop.md](docs/native-sloop.md) for build pins, save compatibility,
+measurements and limits. No runtime JIT is used.
 
 ## Play
 

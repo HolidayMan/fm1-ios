@@ -52,11 +52,17 @@ final class Instrument: ObservableObject {
     private var samples = [Float](repeating: 0, count: 1024)
     private var observations: [NSObjectProtocol] = []
     let directory: URL
-    init() {
-        directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Firmwares", isDirectory: true)
-        do { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
+    private let preferences: UserDefaults
+    private var restoredSelectionNeedsLoad = false
+    init(directory: URL? = nil, preferences: UserDefaults = .standard) {
+        self.preferences = preferences
+        self.directory = directory ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Firmwares", isDirectory: true)
+        do { try FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true) }
         catch { message = error.localizedDescription }
         refresh()
+        selected = FirmwareSelection.preferred(in: firmwares, lastID: preferences.string(forKey: FirmwareSelection.preferenceKey))
+        restoredSelectionNeedsLoad = selected != nil
+        if selected != nil {status = "Paused · tap Resume"}
         observations.append(NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
             if let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
                AVAudioSession.InterruptionType(rawValue: raw) == .began { self?.pause() }
@@ -137,7 +143,11 @@ final class Instrument: ObservableObject {
                 if let saved = storage.sync(execute: { try? Data(contentsOf: stateURL(fw.id)) }) {
                     _ = saved.withUnsafeBytes {instrument_restore(next,$0.bindMemory(to:UInt8.self).baseAddress,saved.count)}
                 }
-                DispatchQueue.main.async { self.selected = fw; self.screen = nil; self.status = "Booting…" }
+                DispatchQueue.main.async {
+                    self.selected = fw; self.restoredSelectionNeedsLoad = false
+                    self.preferences.set(fw.id, forKey: FirmwareSelection.preferenceKey)
+                    self.screen = nil; self.status = "Booting…"
+                }
                 try startWorker()
                 let live = playing
                 DispatchQueue.main.async { self.busy = false; self.running = live }
@@ -146,7 +156,8 @@ final class Instrument: ObservableObject {
     }
     func resume() {
         guard !busy else {return}
-        if selected == nil {return}
+        guard let selected else {return}
+        if restoredSelectionNeedsLoad {load(selected);return}
         busy = true
         worker.async { [self] in
             do {try startWorker(); let live=playing; DispatchQueue.main.async {self.busy=false;self.running=live}}
@@ -252,7 +263,7 @@ final class Instrument: ObservableObject {
             let slow = health.recentRenderRatio > 1
             DispatchQueue.main.async {
                 self.screen = image; self.leds = led
-                self.status = state == 2 ? "Firmware stopped — try another package" : (slow ? "Emulation is slower than real time" : "Running · 44.1 kHz")
+                self.status = state == 2 ? "Firmware stopped — try another package" : (slow ? "Audio engine is slower than real time" : "Running · 44.1 kHz")
             }
             lastSnapshot = now
             if state == 2 { stopWorker(); DispatchQueue.main.async { self.running = false }; return }
@@ -274,6 +285,13 @@ final class Instrument: ObservableObject {
     private func makeDiagnostics(now: TimeInterval) -> AudioDiagnostics {
         var diagnostic = health.diagnostics(elapsed: now - playbackStart)
         diagnostic.firmware = activeID
+        diagnostic.backend = AudioBackend(coreCode: instrument_backend(machine))
+        if diagnostic.backend == .native {
+            var counters=[UInt64](repeating:0,count:16)
+            if instrument_workload_metrics(machine,&counters,16) == 16 {
+                diagnostic.nativeWorkload = NativeWorkloadDiagnostics(counters:counters)
+            }
+        }
         if let metrics = audioRing?.metrics {
             diagnostic.outputFrames = metrics.outputFrames
             diagnostic.outputDeliveredFrames = metrics.deliveredFrames
@@ -342,9 +360,39 @@ private final class CheckpointBackgroundTask {
     }
 }
 
+enum AudioBackend: String, Codable {
+    case interpreter, native
+    init?(coreCode: UInt32) {
+        switch coreCode {
+        case 1: self = .interpreter
+        case 2: self = .native
+        default: return nil
+        }
+    }
+    var displayName: String {self == .native ? "Native SLOOP" : "Firmware interpreter"}
+}
+
+/// Read on the emulator worker. Peaks/counters describe this instance since boot.
+/// Effect bits report observed configuration, not separate effect audibility.
+struct NativeWorkloadDiagnostics: Codable, Equatable {
+    let renderedFrames, peakSharedSynthVoices, peakDrumVoices, voiceKills: UInt64
+    let nonzeroDSPSamples, peakRawQ15Magnitude, configuredEffectMask, activeTrackMask: UInt64
+    let framesWhilePlaying: UInt64
+    let peakTrackSynthVoices: [UInt64]
+    let peakLiveGrains: UInt64
+    init?(counters:[UInt64]) {
+        guard counters.count == 16 else {return nil}
+        renderedFrames=counters[0];peakSharedSynthVoices=counters[1];peakDrumVoices=counters[2];voiceKills=counters[3]
+        nonzeroDSPSamples=counters[4];peakRawQ15Magnitude=counters[5];configuredEffectMask=counters[6];activeTrackMask=counters[7]
+        framesWhilePlaying=counters[8];peakTrackSynthVoices=Array(counters[9...11]);peakLiveGrains=counters[12]
+    }
+}
+
 /// Local aggregate measurements only; no firmware bytes, user input or audio is recorded.
 struct AudioDiagnostics: Codable, Equatable {
     var firmware: String?
+    var backend: AudioBackend?
+    var nativeWorkload: NativeWorkloadDiagnostics?
     var device = ""
     var system = ""
     var lowPowerModeEnabled: Bool?

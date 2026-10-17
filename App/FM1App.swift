@@ -85,7 +85,8 @@ struct InstrumentView:View {
                         Text("Compatibility and real-time performance vary by firmware. The catalogue identifies available releases; it does not certify every version. No microphone or account is needed.")
                     }
                     Section {
-                        LabeledContent("Emulator time / audio time",value:String(format:"%.0f%%",instrument.audioDiagnostics.renderRatioMean*100))
+                        LabeledContent("Audio engine",value:instrument.audioDiagnostics.backend?.displayName ?? "Not loaded")
+                        LabeledContent("Render time / audio time",value:String(format:"%.0f%%",instrument.audioDiagnostics.renderRatioMean*100))
                         LabeledContent("95th percentile",value:String(format:"%.0f%%",instrument.audioDiagnostics.renderRatioP95*100))
                         LabeledContent("Output underrun frames",value:"\(instrument.audioDiagnostics.outputUnderrunFrames)")
                         LabeledContent("Callbacks with underruns",value:"\(instrument.audioDiagnostics.outputUnderrunCallbacks)")
@@ -94,11 +95,26 @@ struct InstrumentView:View {
                         LabeledContent("Queued audio",value:String(format:"%.1f ms",instrument.audioDiagnostics.bufferedMilliseconds))
                         LabeledContent("Buffer target / maximum",value:String(format:"%.1f / %.1f ms",instrument.audioDiagnostics.lookaheadMilliseconds,instrument.audioDiagnostics.maximumBufferedMilliseconds))
                     } header:{Text("Audio performance")}
-                    footer:{Text("Below 100% means the emulator renders faster than audio plays. Underruns count output frames that had no queued audio; missing firmware frames are counted separately. Buffer duration is not total device latency. Listening and physical-device latency still need separate checks.")}
-                    Section("Third-party license") {Text((try? String(contentsOf:Bundle.main.url(forResource:"LICENSE-fm1-emu",withExtension:nil)!)) ?? "MIT — Joakim Eriksson, 2026").font(.caption)}
+                    footer:{Text("Below 100% means the audio engine renders faster than audio plays. Underruns count output frames that had no queued audio; missing firmware frames are counted separately. Buffer duration is not total device latency. Listening and physical-device latency still need separate checks.")}
+                    Section("Third-party licenses") {
+                        NavigationLink("fm1-emu · MIT") {LicenseNoticeView(title:"fm1-emu",resource:"LICENSE-fm1-emu")}
+                        NavigationLink("Native SLOOP · notices & attribution") {LicenseNoticeView(title:"Native SLOOP notices",resource:"NOTICE-native-sloop")}
+                        NavigationLink("Native SLOOP · GNU GPL version 3") {LicenseNoticeView(title:"GNU GPL version 3",resource:"LICENSE-native-sloop")}
+                    }
                 }.navigationTitle("About").toolbar {Button("Done"){about=false}}
             }
         }
         .alert("Couldn’t load firmware",isPresented:Binding(get:{instrument.message != nil},set:{if !$0{instrument.message=nil}})) {Button("OK"){instrument.message=nil}} message:{Text(instrument.message ?? "")}
+    }
+}
+
+private struct LicenseNoticeView: View {
+    let title: String
+    let resource: String
+    var body: some View {
+        ScrollView {
+            Text(Bundle.main.url(forResource:resource,withExtension:nil).flatMap {try? String(contentsOf:$0)} ?? "License notice unavailable")
+                .font(.caption).textSelection(.enabled).frame(maxWidth:.infinity,alignment:.leading).padding()
+        }.navigationTitle(title).navigationBarTitleDisplayMode(.inline)
     }
 }

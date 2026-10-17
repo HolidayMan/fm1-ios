@@ -185,3 +185,46 @@ The runner freezes input source files and fixture bytes, records revision plus c
 Target-matched simulator preparation began but was paused when the static-kernel candidate showed a larger first gain. Instrumented Rust `aarch64-apple-ios-sim` compilation succeeded and the matching LLVM profiler runtime is available. Test-only opt-in hooks can reset/write profiles with `FM1_WRITE_LLVM_PROFILE=1`. `benchmark-simulator.py --rust-archive <ignored-archive> --pgo-training` prepares a private project copy with that archive and runtime, selects only the original three scenarios, sets a writable `LLVM_PROFILE_FILE`, and requires an explicitly flushed profile per firmware. The instrumented app has **not yet been linked or trained**. Normal runs leave profiler hooks disabled. The first target-matched trial must validate symbols, profile writes, warning coverage and steady output before accepting an iOS claim.
 
 For a validated external core candidate, `--rust-archive` also freezes an archive already inside `build/` or `Research/`, avoiding a shared Rust rebuild. The app project is copied into the run's build directory so its simulator library path points directly to the frozen archive. Reuse still verifies app/test executable hashes. Every measured report includes current diagnostics' optional Low Power Mode and thermal-state fields; older physical/simulator reports predate those fields, so their environment cannot be reconstructed from absent values.
+
+## Native SLOOP saved-sequencer regression — candidate 0.3.0 (5)
+
+The earlier one-key/chord stress never started SLOOP's sequencer. A separate Release-only `AudioStressTests/testSloopSavedSequencerStress` now loads an explicit saved-flash fixture, warms audio for five seconds, presses the physical PLAY matrix key 12 for 50 ms, plays the saved loop, adds 8 Hz attacks on pad 14 for the final 15 seconds (80 ms holds), then presses STOP. Reports retain balanced dispatched input counts; this is model-input stress, not physical touchscreen acceptance.
+
+The test requires `FM1_RUN_SAVED_SEQUENCER_STRESS=1` and the exact `FM1_SAVED_SEQUENCER_FLASH_SHA256`. The native backend must be reported. Both phases require zero additional missing core/output frames or output-underflow callbacks, at least 90% output-clock coverage and mean render ratio below 20%. Workload counters additionally require nonzero DSP samples during the loop-only phase and sequencer-playing frame coverage of at least 90% of measured time. At least 100 of the nominal 120 live-pad attacks must arrive, with matched releases. Reports are written before these gates.
+
+`--require-max-workload` also requires all four active tracks, peak eight shared synth voices, six overlapping drum voices and all eleven effect-configuration flags. The synth limit is eight shared voices, not eight voices per track. Effect flags establish observed configuration; they do not prove each effect's separate audibility. Peaks are per-instance observations since boot. The selected bounded synthetic fixture uses 240 BPM, 64 steps, three synth tracks and drums; it remains separate from the owner's saved pattern.
+
+### Final dedicated-simulator measurements
+
+The final native simulator archive SHA-256 is `0e40e9280c0904f57a8ceb3f5fd5aaf00753b856be0304e48d5e6749515fcc72`. Frozen app/test sources and executables are under `build/PerformanceSimulator-native-sloop-final-build5`; the app is 0.3.0 (5). These are simulator results, not physical listening or latency acceptance.
+
+| Fixture | Measured seconds | Mean render budget | Recent p95 at end | Missing core/output frames | Output-clock coverage |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Copied owner 90 BPM saved drum loop | 30.012 | 0.49% | 2.46% | 0 / 0 | 99.999% |
+| Bounded four-track/effects stress, 240 BPM | 120.071 | 5.32% | 11.79% | 0 / 0 | 99.932% |
+
+Both runs passed their XCTest gates and delivered 121 balanced live-pad attack/release pairs. Owner playback observed six drum voices and active track mask 8. The synthetic run observed eight shared synth voices (per-track peaks 4/2/2), six drum voices, twelve live grains, active-track mask 15, effect-configuration mask 2047, 10,586,094 nonzero DSP samples and zero voice-budget kills. Sixteen focused model, geometry, diagnostics, packaging and ring/window tests passed against the final frozen app; two filesystem-only runner restoration tests also passed.
+
+Mean render timing measures the render call. It excludes snapshots, flash copies, worker-queue waiting and other host work; it is not whole-app CPU use. Recent p95 covers the trailing 256 buffers. Output-clock coverage and actual output shortages remain independent checks.
+
+The earlier intermediate native archive `f33c2daed30762f391ee8022e679bfd5487ddf7360661a0f3d00f05aca857002` did **not** pass the owner's 30-second scenario: its first 15-second phase had 512 missing output frames in one callback, despite zero missing core frames and 0.33% mean render budget. The following repeated-pad phase had zero shortages. That failed result remains under `Research/Performance/native-owner-loop-build5`; no buffer or quality gate was relaxed. The final owner and synthetic runs above used the updated workload-metrics archive in a quiet measurement window.
+
+Final aggregates and restore receipts are under `Research/Performance/native-final-owner-loop5` and `Research/Performance/native-final-heavy-loop5`. The final owner's XCTest passed, but initial report collection checked the old Documents-root location after isolation moved the aggregate beside its fixture directory. Its aggregate was recovered exactly from the JSON printed by that test, with an explicit recovery note in `summary.json`; the runner lookup was fixed before the synthetic run. Both runs shut down the dedicated simulator and verified byte-for-byte restoration of its previous Documents and preferences.
+
+### Runner and physical-fixture isolation
+
+The existing runner accepts `--saved-sequencer-flash <file-inside-Research>`, `--saved-sequencer-seconds 30..300`, `--saved-sequencer-tempo <fixture-BPM>` and optional `--require-max-workload`. This mode selects only the saved-sequencer test. It freezes or reuses the supplied native archive without rebuilding generic Rust, copies the pinned package and explicit flash into a new `Documents/PerformanceFixtures/<run-label>` directory, and leaves the default firmware library untouched. The complete Documents directory and preferences are backed up and byte-verified after restoration, including when XCTest relocates the data container. Failure-triggered broad simulator diagnostics are disabled; failed XCTest results and explicit aggregate reports are retained.
+
+```sh
+python3 scripts/benchmark-simulator.py CAF633C4-871C-42EA-B179-3C33DCE401E4 native-loop-example \
+  --reuse build/PerformanceSimulator-native-sloop-final-build5 \
+  --saved-sequencer-flash Research/NativeSloop/stress-variant0.flash \
+  --saved-sequencer-seconds 120 --saved-sequencer-tempo 240 \
+  --require-max-workload --post-diagnostics
+```
+
+For physical testing, the test-only `FM1_SEQUENCER_FIXTURE_DIRECTORY` must name an existing app-relative `Documents/PerformanceFixtures/<name>` directory. Dot traversal and resolved symlink escape are rejected. It must contain `SLOOP-2.7.1.fwsc` and the matching `SLOOP-2.7.1.flash`. The test injects this directory and a temporary preferences suite into `Instrument`; no shipping runtime environment override was added. The fixture receives its own checkpoints, preserving the normal owner library and preferences. Aggregates are written to the fixture directory's parent as `Stress-sloop-saved-sequencer.json`; collect after each scenario when two fixtures share a parent.
+
+The required environment is `FM1_RUN_SAVED_SEQUENCER_STRESS=1`, `FM1_SAVED_SEQUENCER_FLASH_SHA256`, `FM1_SEQUENCER_FIXTURE_DIRECTORY`, `FM1_SAVED_SEQUENCER_SECONDS` (30 or 120), `FM1_SAVED_SEQUENCER_TEMPO_BPM` (90 or 240), and `FM1_SAVED_SEQUENCER_REQUIRE_MAX_WORKLOAD` (0 for owner, 1 for synthetic). `FM1_BENCHMARK_RUN` and `FM1_BENCHMARK_REVISION` label receipts. Physical results belong to the separate device-verification record.
+
+Separate signed Release clean-delivery and test-host builds were prepared under `build-device/NativeSloop5Final`, using device archive `2a97672aa41b6027a1c21b6476c250770f7ee1fc30b963f529151d498a91a527`. Both passed strict deep signature verification; the clean app embeds no XCTest bundle. App/test source bytes match the final simulator freeze. Build receipts distinguish these binaries and do not imply device installation, measurement or listening acceptance.

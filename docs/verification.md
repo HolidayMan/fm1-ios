@@ -136,3 +136,39 @@ Clean signed Release app 0.2.1 (4) passed strict deep code-signature verificatio
 
 
 Final physical warmup counters remain explicit: output shortages were Stock 273, Felucca 191 and SLOOP 0 samples; Felucca/SLOOP also report 3,072 initial core-missing frames each. They are excluded from the stated steady gates, not erased or treated as a zero-startup result. Low-power mode remained off; final Stock thermal state was fair (1), with Felucca/SLOOP nominal (0). No sustained thermal acceptance is claimed.
+
+
+## Native SLOOP 2.7.1 and recorded-loop regression — 0.3.0 (5)
+
+The user's recorded drum loop exposed an untested workload: prior three-key stress was not a sequencer test. A read-only physical diagnostic showed 106.8% mean render budget and 6.61% missing output samples. Offline reproduction from confirmed saved flash isolated increased CPU1/voice workload with nominal guest-clock progression. See `native-sloop.md` for the cause, exact source pins, hybrid design and compatibility limits.
+
+The exact SLOOP 2.7.1 package now selects source-native execution; unmatched firmware retains the interpreter. Native source/resource provenance is pinned and generated-header corruption/missing-input guards were independently checked. 68 native Rust tests and 63 interpreter-only tests passed, including all four user-sample slots, full flash persistence, FIFO chunking, independent instances, master smoothing and record/save/reopen. 182 upstream DSP goldens were unchanged; this is not a claim of complete application PCM/boot/input-timing parity.
+
+Keyboard hit testing now covers the small dead gutters/bottom strip while preserving drawn-control priority and multitouch ownership. Launch restores the remembered firmware paused; absent a remembered installed choice, it prefers installed SLOOP 2.7.1 or the newest installed SLOOP release. No automatic download occurs. Six initial targeted geometry/selection tests and 16 final focused Swift tests passed, including optional backend diagnostics and bundled license notices. A separate independent review found no actionable UI issue.
+
+### Simulator integration
+
+Final frozen simulator core SHA-256 `0e40e9280c0904f57a8ceb3f5fd5aaf00753b856be0304e48d5e6749515fcc72`, native app 0.3.0 (5), dedicated iPhone 12 simulator. Each case uses an isolated local fixture directory and verified flash hash; the runner restores prior Documents and Preferences byte-for-byte and shuts the simulator down.
+
+The owner-loop case passed 30 seconds of playback, with rapid repeated kick-pad input for the final 15 seconds: zero core/output shortages, approximately 0.49% mean render budget, 2.46% recent p95 and 99.999% output-clock coverage. Actual playing frames, nonzero DSP samples and drum voices were observed. An earlier intermediate run had one 512-frame output shortage despite a fast core; that failure remains recorded. No buffer expansion or weakened zero-shortage gate was used to obtain the final pass.
+
+The independent heavy fixture uses four filled 64-step tracks, legal 240 BPM/1:32/ratchet x4 settings, shared synth polyphony and drums, inserts and global effects. Three bounded host variants were compared; mixed FM6/PHYS/GRAIN was the heaviest measured, not a proven global worst case. The 120.07-second final simulator run passed with zero missing core/output samples over 5,291,520 output samples, 99.932% output-clock coverage, 5.32% mean render budget and 11.79% recent p95. It observed eight shared synth voices (4/2/2), six drum voices, twelve grains, all four tracks, all instrumented effect configuration flags, 10,586,094 nonzero DSP samples and 121 balanced repeated pad attacks. Configuration flags do not prove each effect is independently audible.
+
+Owner flash SHA-256: `486441dff06e3d0fda51b7fcb4643a2297770bcd9035291734f243b3c98e2e02`; isolated heavy flash: `ff7985162196490ca4d888fc83bc879f075150d7adce5c33684d92cd5650e3b7`. Owner files were copied after the user stopped playback and allowed firmware autosave; stress data never replaces that project.
+
+
+### Physical native validation and local delivery
+
+The signed device build used frozen core `2a97672aa41b6027a1c21b6476c250770f7ee1fc30b963f529151d498a91a527`. App/test source bytes and all 45 native build-source hashes matched the frozen simulator/device receipts. Tests ran on the paired iPhone 12, with 48 kHz hardware output / 44.1 kHz firmware source, Low Power Mode off and nominal final thermal state. Test-only directories under `Documents/PerformanceFixtures/native-sloop-build5/{owner,heavy}` and isolated preferences kept test writes away from the owner's firmware library.
+
+| Physical scenario | Measured duration | Mean render budget | Recent p95 | Missing core/output samples |
+|---|---:|---:|---:|---:|
+| Saved owner drum loop plus 8 Hz repeated pad | 30.009 s | 3.114% | 4.339% | 0 / 0 |
+| Four-track/effects heavy fixture plus repeated pad | 120.019 s | 18.636% | 19.999% | 0 / 0 |
+
+The heavy case delivered all 5,292,882 requested output samples, with approximately 100% output-clock coverage. It observed eight synth voices (4/2/2), six drums, twelve grains, all four active tracks, configured effect mask 2047 and 10,589,306 nonzero DSP samples. Both warmup periods also had zero missing core/output samples. These are measured workload passes, not a universal worst-patch or all-firmware claim. Listening and long-session thermal acceptance remain separate.
+
+Reports: `Research/Performance/native-physical-build5/{owner,heavy}.json`; result bundles `build-device/NativeSloop5Final/{Owner,Heavy}.xcresult`. Clean Release 0.3.0 (5) passed strict deep signature verification, installed and launched successfully. Device app inventory confirms version/build. No uninstall, store upload or publication occurred. Detailed save-retention verification follows separately; the pre-install owner backup remains preserved.
+
+
+The post-delivery retention audit compared active firmware autosave generations rather than stale slots. Every complete track block (notes, drum steps and engine/track parameters), user sample slot, stored section, preset, FM6 bank and setting is preserved. The 19 differing raw bytes are confined to an updated autosave A sector; its active project differs only in global Swing (raw 0→81) plus checksums. Its origin is unknown; current phone data was retained without rollback. Both active projects pass CRC/FNV validation. Other firmware packages and Stock/Felucca flash copies are byte-identical. Private detailed receipt: `Research/SequencerDiagnosis/retention-native-build5.json`.

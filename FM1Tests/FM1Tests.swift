@@ -2,7 +2,9 @@ import XCTest
 @testable import FM1
 final class FM1Tests: XCTestCase {
     func testEmptyLibraryDoesNotPretendToRunFirmware() {
-        let model=Instrument()
+        let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:directory)}
+        let model=Instrument(directory:directory)
         XCTAssertFalse(model.running)
         XCTAssertNil(model.screen)
         XCTAssertNil(model.selected)

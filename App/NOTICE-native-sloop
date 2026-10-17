@@ -1,0 +1,22 @@
+Native SLOOP 2.7.1 backend (local prototype)
+
+SLOOP / Felucca firmware: GPL-3.0-only. Copyright 2026 Leo Kuroshita
+(@kurogedelic), Hugelton Instruments; SLOOP by isod89 and contributors.
+Exact source: https://github.com/isod89/sloop-fm1
+Tag v2.7.1, commit 4ec1ac829fd2bdf2c571ea215fb3d62477d01220.
+
+Native firmware wrapper and per-instance LLVM state tooling derived from
+Virtual FM-1, GPL-3.0: https://github.com/jbschooley/Virtual-FM-1
+Commit c52668953231655046ee142d2b3ab4fd2c8ca0b4.
+Adapted here for full physical flash, user samples, physical controls,
+MASTER ADC, and the existing serial instrument ABI.
+
+SLOOP includes the msfa FM6 core under Apache-2.0; physical modeling code
+credits DaisySP/Rings under MIT; font Terminus under SIL OFL 1.1;
+built-in samples under CC0. The source distribution's LICENSING.md and
+LICENSES retain the precise component attribution and asset permissions.
+The icon atlas retains its upstream section 7 permission terms.
+
+See bundled LICENSE-native-sloop for GPL-3.0. The combined native-backend
+build must not be described as MIT-only. This is a local private prototype;
+no App Store or external distribution clearance is claimed.

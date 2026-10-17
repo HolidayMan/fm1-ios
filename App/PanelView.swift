@@ -164,7 +164,27 @@ final class HardwarePanel:UIView {
         }
     }
     private func point(_ touch:UITouch)->CGPoint {touch.location(in:self)}
-    private func hit(_ p:CGPoint)->Int? {controls.indices.reversed().first{controls[$0].rect.contains(p)}}
+    private func hit(_ p:CGPoint)->Int? {
+        // Preserve the exact visible target first. Keyboard gutters and the casing
+        // below the keys belong to their nearest key too: a finger must not lose
+        // its note just because it landed/slid a point into a drawing gap.
+        if let exact=controls.indices.reversed().first(where:{controls[$0].rect.contains(p)}) {return exact}
+        guard bounds.contains(p),p.y>=keyboardRect.minY else {return nil}
+        return controls.indices.filter {i in
+            if case .key(let id)=controls[i].kind {return id>=14};return false
+        }.min {a,b in
+            func distance(_ rect:CGRect)->CGFloat {
+                let dx=max(0,max(rect.minX-p.x,p.x-rect.maxX)),dy=max(0,max(rect.minY-p.y,p.y-rect.maxY))
+                return dx*dx+dy*dy
+            }
+            return distance(controls[a].rect)<distance(controls[b].rect)
+        }
+    }
+    // The same resolver is exercised by geometry tests and actual touch tracking.
+    func pianoKey(at point:CGPoint)->Int? {
+        guard let i=hit(point),case .key(let id)=controls[i].kind,id>=14 else {return nil}
+        return id
+    }
     private func press(_ i:Int,_ down:Bool) {
         if case .key(let id)=controls[i].kind {
             if down {held.insert(id)} else {held.remove(id)}

@@ -62,13 +62,15 @@ def snapshot(path, simulator):
     return value
 
 
-def build(label, reuse, stress, rust_archive=None, pgo_training=False):
+def build(label, reuse, stress, rust_archive=None, pgo_training=False, saved_sequencer=None):
     folder = local_path(reuse, ROOT / "build") if reuse else ROOT / "build" / f"PerformanceSimulator-{label}"
     manifest = folder / "performance-build.json"
     if reuse:
         info = json.loads(manifest.read_text())
         if stress and not info.get("supportsAudioStress", False):
             raise ValueError("Frozen bundle predates the stress harness; prepare a new Release bundle")
+        if saved_sequencer and (not info.get("supportsSavedSequencerStress", False) or not info.get("supportsNativeWorkloadMetrics", False)):
+            raise ValueError("Frozen bundle predates the saved-sequencer workload verification")
         if pgo_training and not info.get("pgoTraining", False):
             raise ValueError("Frozen bundle does not contain the instrumented LLVM runtime")
         if info["configuration"] != "Release":
@@ -119,6 +121,10 @@ def build(label, reuse, stress, rust_archive=None, pgo_training=False):
         info = {"revision": command(["git", "rev-parse", "HEAD"]).strip(), "configuration": "Release",
                 "sourceTreeDirty": bool(command(["git", "status", "--porcelain"]).strip()),
                 "supportsAudioStress": (ROOT / "FM1Tests/AudioStressTests.swift").exists(),
+                "supportsSavedSequencerStress": "testSloopSavedSequencerStress" in (ROOT / "FM1Tests/AudioStressTests.swift").read_text(),
+                "supportsNativeWorkloadMetrics": "NativeWorkloadDiagnostics" in (ROOT / "App/Instrument.swift").read_text(),
+                "appVersion": plistlib.loads((ROOT / "App/Info.plist").read_bytes())["CFBundleShortVersionString"],
+                "appBuild": plistlib.loads((ROOT / "App/Info.plist").read_bytes())["CFBundleVersion"],
                 "pgoTraining":pgo_training,
                 "rustArchiveSHA256": digest(archive),
                 "appExecutableSHA256": digest(folder / "Build/Products/Release-iphonesimulator/FM1.app/FM1"),
@@ -133,10 +139,18 @@ def build(label, reuse, stress, rust_archive=None, pgo_training=False):
         raise ValueError("Expected one generated FM1 xctestrun")
     spec = plistlib.loads(specs[0].read_bytes())
     spec["FM1Tests"].setdefault("EnvironmentVariables", {}).update({
-        "FM1_RUN_SIMULATOR_PERFORMANCE": "0" if stress else "1",
-        "FM1_RUN_AUDIO_STRESS": "1" if stress else "0", "FM1_BENCHMARK_REVISION": info["revision"],
+        "FM1_RUN_SIMULATOR_PERFORMANCE": "0" if stress or saved_sequencer else "1",
+        "FM1_RUN_AUDIO_STRESS": "1" if stress else "0",
+        "FM1_RUN_SAVED_SEQUENCER_STRESS": "1" if saved_sequencer else "0",
+        "FM1_BENCHMARK_REVISION": info["revision"],
         "FM1_WRITE_LLVM_PROFILE":"1" if pgo_training else "0",
         "FM1_BENCHMARK_RUN": label})
+    if saved_sequencer:
+        spec["FM1Tests"]["EnvironmentVariables"].update({
+            "FM1_SAVED_SEQUENCER_FLASH_SHA256": saved_sequencer["sha256"],
+            "FM1_SAVED_SEQUENCER_SECONDS": str(saved_sequencer["seconds"]),
+            "FM1_SAVED_SEQUENCER_TEMPO_BPM": str(saved_sequencer["tempo"]),
+            "FM1_SAVED_SEQUENCER_REQUIRE_MAX_WORKLOAD": "1" if saved_sequencer["requireMaxWorkload"] else "0"})
     run_spec = specs[0].with_name(f"Performance-{label}.xctestrun")
     run_spec.write_bytes(plistlib.dumps(spec))
     return folder, app, run_spec, info
@@ -172,6 +186,27 @@ def restore_previous(directory, backup):
             shutil.copyfile(backup / name, directory / name)
 
 
+
+def backup_app_state(container, backup):
+    backup.mkdir()
+    for source, name in ((container / "Documents", "Documents"), (container / "Library/Preferences", "Preferences")):
+        if source.exists():
+            shutil.copytree(source, backup / name)
+
+
+def restore_app_state(container, backup):
+    for name, target in (("Documents", container / "Documents"), ("Preferences", container / "Library/Preferences")):
+        if target.exists():
+            shutil.rmtree(target)
+        source = backup / name
+        if source.exists():
+            shutil.copytree(source, target)
+            before = {str(p.relative_to(source)):digest(p) for p in source.rglob("*") if p.is_file()}
+            after = {str(p.relative_to(target)):digest(p) for p in target.rglob("*") if p.is_file()}
+            if before != after:
+                raise RuntimeError("Prior simulator app-state restore failed byte verification")
+
+
 def current_container(simulator):
     # XCTest may reinstall the app and relocate its data container even with
     # test-without-building. Resolve again after testing, never reuse that path.
@@ -190,9 +225,13 @@ def main():
     parser.add_argument("--snapshot", default=str(DEFAULT_STATE), help="Ignored fixture-state folder inside Research/")
     parser.add_argument("--prepare-only", action="store_true", help="Build/freeze only; do not boot or run the simulator")
     parser.add_argument("--stress", action="store_true", help="Run separate opt-in 5s warmup +60s one-key/three-key/control stress; preserve the 25s comparison")
+    parser.add_argument("--saved-sequencer-flash", help="Opt-in saved-loop test using this explicit copied flash inside Research/; never reads a phone")
+    parser.add_argument("--require-max-workload", action="store_true", help="Require all four native tracks, eight synth/six drum voices and all effect configuration flags")
+    parser.add_argument("--saved-sequencer-seconds", type=float, default=30, help="Saved-loop measured duration, 30–300 seconds; last 15s add 8Hz pad attacks")
+    parser.add_argument("--saved-sequencer-tempo", type=int, default=90, help="Tempo metadata of the explicit hash-pinned saved-loop fixture")
     parser.add_argument("--rust-archive", help="Use an explicit frozen Rust archive inside build/ or Research/ (no shared Rust build)")
     parser.add_argument("--pgo-training", action="store_true", help="Test-only matching LLVM runtime and explicit profile flush; requires instrumented Rust archive")
-    parser.add_argument("--post-diagnostics", action="store_true", help="After measurements, run the eight ordinary audio/ring/stress-arithmetic checks before shutdown")
+    parser.add_argument("--post-diagnostics", action="store_true", help="After measurements, run focused model, geometry and audio checks before shutdown")
     parser.add_argument("--settle-seconds", type=float, default=15, help="Wait after boot/install before measurements")
     args = parser.parse_args()
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,79}", args.run_label):
@@ -209,7 +248,19 @@ def main():
         parser.error("--reuse and --rust-archive cannot be combined")
     if args.stress and args.pgo_training:
         parser.error("PGO training uses the three original25s scenarios")
-    folder, app, spec, info = build(args.run_label, args.reuse, args.stress, args.rust_archive, args.pgo_training)
+    saved_sequencer = None
+    if args.require_max_workload and not args.saved_sequencer_flash:
+        parser.error("--require-max-workload requires --saved-sequencer-flash")
+    if args.saved_sequencer_flash:
+        if args.stress or args.pgo_training:
+            parser.error("Saved sequencer is a separate scenario from sustained-note stress and PGO")
+        if not 30 <= args.saved_sequencer_seconds <= 300 or not 20 <= args.saved_sequencer_tempo <= 400:
+            parser.error("Saved sequencer duration must be 30–300s and tempo metadata 20–400 BPM")
+        flash = local_path(args.saved_sequencer_flash, ROOT / "Research")
+        if not flash.is_file() or not 1 <= flash.stat().st_size <= 4 * 1024 * 1024:
+            parser.error("Saved sequencer flash must be an existing file up to 4 MiB")
+        saved_sequencer = {"path":flash,"sha256":digest(flash),"seconds":args.saved_sequencer_seconds,"tempo":args.saved_sequencer_tempo,"requireMaxWorkload":args.require_max_workload}
+    folder, app, spec, info = build(args.run_label, args.reuse, args.stress, args.rust_archive, args.pgo_training, saved_sequencer)
     print(f"Frozen Release build ready: {folder}", flush=True)
     if args.prepare_only:
         return 0
@@ -222,6 +273,7 @@ def main():
         raise ValueError("Result bundle already exists")
     backup, directory = reports / "simulator-before-run", None
     profile_directory=None
+    full_backup=None
     try:
         if devices[0]["state"] != "Booted":
             command(["xcrun", "simctl", "boot", args.simulator_id])
@@ -231,7 +283,25 @@ def main():
         container = current_container(args.simulator_id)
         directory = container / "Documents/Firmwares"
         directory.mkdir(parents=True, exist_ok=True)
-        restore_fixture(directory, state, fixture_state, backup)
+        if saved_sequencer:
+            # Preserve the entire app Documents and preferences, including unrelated
+            # packages/saves and the selected firmware. XCTest can relocate these.
+            candidate_backup = reports / "app-state-before-run"
+            backup_app_state(container, candidate_backup)
+            full_backup = candidate_backup
+        if saved_sequencer:
+            fixture = next(x for x in fixture_state["fixtures"] if x["key"] == "sloop")
+            isolated = container / "Documents/PerformanceFixtures" / args.run_label
+            isolated.mkdir(parents=True, exist_ok=False)
+            shutil.copyfile(state / fixture["package"], isolated / (fixture["id"] + ".fwsc"))
+            shutil.copyfile(saved_sequencer["path"], isolated / (fixture["id"] + ".flash"))
+            if digest(isolated / (fixture["id"] + ".flash")) != saved_sequencer["sha256"]:
+                raise ValueError("Copied saved-sequencer flash digest mismatch")
+            value = plistlib.loads(spec.read_bytes())
+            value["FM1Tests"]["EnvironmentVariables"]["FM1_SEQUENCER_FIXTURE_DIRECTORY"] = str(isolated.relative_to(container))
+            spec.write_bytes(plistlib.dumps(value))
+        else:
+            restore_fixture(directory, state, fixture_state, backup)
         if args.pgo_training:
             profiles=container / "Documents/PGO"
             if profiles.exists():
@@ -244,25 +314,28 @@ def main():
             value["FM1Tests"]["EnvironmentVariables"]["LLVM_PROFILE_FILE"]=str(profiles / "%p.profraw")
             spec.write_bytes(plistlib.dumps(value))
         time.sleep(args.settle_seconds)
-        test_class = "AudioStressTests" if args.stress else "DevicePerformanceTests"
-        print("Measurement window: three 65-second stress scenarios." if args.stress else
-              "Measurement window: only the three unchanged 25-second sustained-note tests.", flush=True)
+        test_class = "AudioStressTests/testSloopSavedSequencerStress" if saved_sequencer else ("AudioStressTests" if args.stress else "DevicePerformanceTests")
+        print(f"Measurement window: saved sequencer {saved_sequencer['seconds']}s, last 15s add 8Hz attacks." if saved_sequencer else ("Measurement window: three 65-second stress scenarios." if args.stress else
+              "Measurement window: only the three unchanged 25-second sustained-note tests."), flush=True)
         status = command(["xcodebuild", "test-without-building", "-xctestrun", str(spec), "-destination",
                           f"platform=iOS Simulator,id={args.simulator_id}", "-resultBundlePath", str(result),
-                          "-parallel-testing-enabled", "NO", f"-only-testing:FM1Tests/{test_class}"], reports / "test.log", check=False)
+                          "-parallel-testing-enabled", "NO", "-collect-test-diagnostics", "never", f"-only-testing:FM1Tests/{test_class}"], reports / "test.log", check=False)
         container=current_container(args.simulator_id)
         directory=container / "Documents/Firmwares"
-        summary = {"build": info, "snapshot": str(state.relative_to(ROOT)), "simulatorID": args.simulator_id, "testsExitCode": status, "mode": "stress" if args.stress else "comparison25", "reports": {}}
-        for key in ("stock", "felucca", "sloop"):
-            prefix = "Stress" if args.stress else "Performance"
-            report = json.loads((container / f"Documents/{prefix}-{key}.json").read_text())
+        summary = {"build": info, "snapshot": str(state.relative_to(ROOT)), "simulatorID": args.simulator_id, "testsExitCode": status, "mode": "saved-sequencer" if saved_sequencer else ("stress" if args.stress else "comparison25"), "reports": {}}
+        for key in (("sloop",) if saved_sequencer else ("stock", "felucca", "sloop")):
+            prefix = "Stress" if args.stress or saved_sequencer else "Performance"
+            suffix = "-saved-sequencer" if saved_sequencer else ""
+            report_directory = container / ("Documents/PerformanceFixtures" if saved_sequencer else "Documents")
+            report = json.loads((report_directory / f"{prefix}-{key}{suffix}.json").read_text())
             fixture = next(x for x in fixture_state["fixtures"] if x["key"] == key)
+            expected_flash = saved_sequencer["sha256"] if saved_sequencer else fixture["flashSHA256"]
             if (report.get("benchmarkRun") != args.run_label or report.get("benchmarkPlatform") != "iOS Simulator" or
                     report.get("firmware") != fixture["id"] or report.get("benchmarkFirmwareSHA256") != fixture["sha256"] or
-                    report.get("benchmarkInitialFlashSHA256") != fixture["flashSHA256"]):
+                    report.get("benchmarkInitialFlashSHA256") != expected_flash):
                 raise ValueError(f"Missing, stale or mismatched {key} benchmark report")
             (reports / f"{key}.json").write_text(json.dumps(report, indent=2) + "\n")
-            if args.stress:
+            if args.stress or saved_sequencer:
                 window = report["steadyWindow"]
                 summary["reports"][key] = {"mean": window["meanRenderRatio"], "recentP95AtEnd": window["recentP95AtEnd"],
                     "missingCoreFrames": window["missingCoreFrames"], "missingOutputFrames": window["outputUnderrunFrames"],
@@ -283,13 +356,15 @@ def main():
         if args.post_diagnostics:
             print("Quiet measurement window finished; running ordinary diagnostics checks.",flush=True)
             value=plistlib.loads(spec.read_bytes())
-            value["FM1Tests"]["EnvironmentVariables"].update(FM1_RUN_SIMULATOR_PERFORMANCE="0",FM1_RUN_AUDIO_STRESS="0",FM1_WRITE_LLVM_PROFILE="0")
+            value["FM1Tests"]["EnvironmentVariables"].update(FM1_RUN_SIMULATOR_PERFORMANCE="0",FM1_RUN_AUDIO_STRESS="0",FM1_RUN_SAVED_SEQUENCER_STRESS="0",FM1_WRITE_LLVM_PROFILE="0")
             diagnostic_spec=spec.with_name(f"Diagnostics-{args.run_label}.xctestrun")
             diagnostic_spec.write_bytes(plistlib.dumps(value))
             diagnostic_status=command(["xcodebuild","test-without-building","-xctestrun",str(diagnostic_spec),
                 "-destination",f"platform=iOS Simulator,id={args.simulator_id}","-resultBundlePath",str(folder / f"{args.run_label}-diagnostics.xcresult"),
-                "-parallel-testing-enabled","NO","-only-testing:FM1Tests/AudioMetricsTests",
-                "-only-testing:FM1Tests/AudioRingTests","-only-testing:FM1Tests/AudioStressWindowTests"],reports / "diagnostics.log",check=False)
+                "-parallel-testing-enabled","NO","-collect-test-diagnostics","never","-only-testing:FM1Tests/AudioMetricsTests",
+                "-only-testing:FM1Tests/AudioRingTests","-only-testing:FM1Tests/AudioStressWindowTests",
+                "-only-testing:FM1Tests/FM1Tests","-only-testing:FM1Tests/FirmwareSelectionTests",
+                "-only-testing:FM1Tests/PanelGeometryTests"],reports / "diagnostics.log",check=False)
             summary["diagnosticsTestsExitCode"]=diagnostic_status
             (reports / "summary.json").write_text(json.dumps(summary,indent=2)+"\n")
             status=status or diagnostic_status
@@ -313,6 +388,9 @@ def main():
             raise RuntimeError(f"Unable to locate the current simulator app container; backup retained: {resolution_error}")
         if directory and (backup / "targets.json").exists():
             restore_previous(directory, backup)
+        if full_backup:
+            restore_app_state(directory.parent.parent, full_backup)
+            (reports / "app-state-restored.json").write_text(json.dumps({"documentsAndPreferencesRestored":True,"verifiedFileBytes":True}) + "\n")
         if profile_directory:
             if profile_directory.exists():
                 shutil.rmtree(profile_directory)

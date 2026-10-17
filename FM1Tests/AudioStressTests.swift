@@ -52,6 +52,148 @@ final class AudioStressTests: XCTestCase {
     @MainActor func testFeluccaStress() throws {try measure("felucca","Felucca-1.6.1")}
     @MainActor func testSloopStress() throws {try measure("sloop","SLOOP-2.7.1")}
 
+    /// Uses the owner's copied, hash-pinned recording, never an empty demo patch.
+    /// The runner must preserve/restore its simulator fixture around this opt-in run.
+    @MainActor func testSloopSavedSequencerStress() throws {
+        let environment=ProcessInfo.processInfo.environment
+        guard environment["FM1_RUN_SAVED_SEQUENCER_STRESS"] == "1" else {
+            throw XCTSkip("Saved-loop stress is opt-in: FM1_RUN_SAVED_SEQUENCER_STRESS=1")
+        }
+        #if DEBUG
+        throw XCTSkip("Saved-loop stress requires a Release test build")
+        #endif
+        let expectedFlash=try XCTUnwrap(environment["FM1_SAVED_SEQUENCER_FLASH_SHA256"],"Runner must pin the copied saved recording")
+        let measuredSeconds=Double(environment["FM1_SAVED_SEQUENCER_SECONDS"] ?? "30") ?? 0
+        let tempo=Int(environment["FM1_SAVED_SEQUENCER_TEMPO_BPM"] ?? "90") ?? 0
+        guard (30...300).contains(measuredSeconds),(20...400).contains(tempo) else {
+            XCTFail("Invalid saved-loop duration or fixture tempo metadata");return
+        }
+        let requireMaxWorkload=environment["FM1_SAVED_SEQUENCER_REQUIRE_MAX_WORKLOAD"] == "1"
+        var fixtureDirectory:URL?
+        if let relative=environment["FM1_SEQUENCER_FIXTURE_DIRECTORY"] {
+            let prefix="Documents/PerformanceFixtures/"
+            guard relative.hasPrefix(prefix),relative.count>prefix.count,
+                  relative.split(separator:"/").allSatisfy({!$0.isEmpty && $0 != "." && $0 != ".."}) else {
+                XCTFail("Fixture override must stay under Documents/PerformanceFixtures/<name>");return
+            }
+            let documents=FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].resolvingSymlinksInPath()
+            let allowed=documents.appendingPathComponent("PerformanceFixtures",isDirectory:true)
+            let candidate=documents.appendingPathComponent(String(relative.dropFirst("Documents/".count)),isDirectory:true).resolvingSymlinksInPath()
+            var isDirectory:ObjCBool=false
+            guard candidate.path.hasPrefix(allowed.path+"/"),
+                  FileManager.default.fileExists(atPath:candidate.path,isDirectory:&isDirectory),isDirectory.boolValue else {
+                XCTFail("Isolated fixture directory must exist inside Documents/PerformanceFixtures");return
+            }
+            fixtureDirectory=candidate
+        }
+        let preferenceSuite="FM1SequencerFixture.\(UUID().uuidString)"
+        let preferences=try XCTUnwrap(UserDefaults(suiteName:preferenceSuite))
+        let previousIdlePolicy=UIApplication.shared.isIdleTimerDisabled
+        UIApplication.shared.isIdleTimerDisabled=true
+        let instrument=Instrument(directory:fixtureDirectory,preferences:preferences)
+        let playKey=12, padKey=14
+        var sequencerStarted=false
+        defer {
+            instrument.key(padKey,false)
+            if sequencerStarted {instrument.key(playKey,true);instrument.key(playKey,false)}
+            instrument.pause()
+            let stopped=expectation(description:"Saved sequencer checkpoint finished")
+            instrument.captureAudioDiagnostics {_ in stopped.fulfill()}
+            wait(for:[stopped],timeout:10)
+            UIApplication.shared.isIdleTimerDisabled=previousIdlePolicy
+            preferences.removePersistentDomain(forName:preferenceSuite)
+        }
+        let firmware=try XCTUnwrap(instrument.firmwares.first {$0.name == "SLOOP-2.7.1"})
+        let pinned=try XCTUnwrap(CatalogFirmware.bundled.first {$0.id == "sloop"})
+        func sha(_ data:Data)->String {SHA256.hash(data:data).map {String(format:"%02x",$0)}.joined()}
+        let digest=sha(try Data(contentsOf:firmware.url))
+        XCTAssertEqual(digest,pinned.sha256)
+        guard digest == pinned.sha256 else {return}
+        let flashURL=firmware.url.deletingPathExtension().appendingPathExtension("flash")
+        let initialFlash=sha(try Data(contentsOf:flashURL))
+        XCTAssertEqual(initialFlash,expectedFlash,"Must use the runner's exact saved sequencer fixture")
+        guard initialFlash == expectedFlash else {return}
+        instrument.load(firmware)
+        let boot=XCTNSPredicateExpectation(predicate:NSPredicate {_,_ in instrument.running && !instrument.busy},object:nil)
+        guard XCTWaiter.wait(for:[boot],timeout:20) == .completed else {XCTFail("Saved SLOOP did not start");return}
+        XCTAssertEqual(preferences.string(forKey:FirmwareSelection.preferenceKey),firmware.id,"Successful loading must persist the exact installed identity")
+        hold(5)
+        let warmupEnd=try capture(instrument)
+        XCTAssertEqual(warmupEnd.backend,.native)
+        guard warmupEnd.backend == .native else {return}
+        instrument.key(playKey,true);hold(0.05);instrument.key(playKey,false)
+        sequencerStarted=true
+        let playingStart=try capture(instrument)
+        hold(measuredSeconds-15)
+        let loopOnlyEnd=try capture(instrument)
+        var input=AudioStressInputEvents(), padDown=false
+        var pendingRelease:DispatchWorkItem?
+        let attacks=Timer(timeInterval:0.125,repeats:true) {_ in
+            instrument.key(padKey,true);padDown=true
+            input.keyDownEvents += 1;input.retriggerCycles += 1
+            let release=DispatchWorkItem {
+                instrument.key(padKey,false);padDown=false;input.keyUpEvents += 1
+            }
+            pendingRelease=release
+            DispatchQueue.main.asyncAfter(deadline:.now()+0.08,execute:release)
+        }
+        RunLoop.main.add(attacks,forMode:.common);attacks.fire()
+        hold(15)
+        attacks.invalidate();pendingRelease?.cancel()
+        if padDown {instrument.key(padKey,false);input.keyUpEvents += 1}
+        let steadyEnd=try capture(instrument)
+        // STOP is the same hardware transport toggle, held long enough for a scan.
+        instrument.key(playKey,true);hold(0.05);instrument.key(playKey,false)
+        sequencerStarted=false
+        let phases=[try AudioStressWindow(phase:"saved-sequencer",start:playingStart,end:loopOnlyEnd),
+                    try AudioStressWindow(phase:"saved-sequencer-same-pad-8Hz",start:loopOnlyEnd,end:steadyEnd)]
+        let steady=try AudioStressWindow(phase:"saved-sequencer-total",start:playingStart,end:steadyEnd)
+        let encoder=JSONEncoder();encoder.dateEncodingStrategy = .iso8601
+        func object<T:Encodable>(_ value:T)throws->Any {try JSONSerialization.jsonObject(with:encoder.encode(value))}
+        #if targetEnvironment(simulator)
+        let platform="iOS Simulator"
+        #else
+        let platform="iOS device"
+        #endif
+        let report:[String:Any]=[
+            "benchmarkPlatform":platform,"benchmarkConfiguration":"Release","usesIsolatedFixtureDirectory":fixtureDirectory != nil,
+            "benchmarkRevision":environment["FM1_BENCHMARK_REVISION"] ?? "unspecified",
+            "benchmarkRun":environment["FM1_BENCHMARK_RUN"] ?? "unspecified",
+            "firmware":firmware.id,"benchmarkFirmwareSHA256":digest,"benchmarkInitialFlashSHA256":initialFlash,
+            "savedPatternTempoBPM":tempo,"warmupSeconds":5,"measuredSeconds":measuredSeconds,"playMatrixID":playKey,
+            "retriggerMatrixID":padKey,"retriggerSeconds":0.125,"retriggerHoldSeconds":0.08,
+            "inputEvents":try object(input),"meanRenderTarget":0.2,
+            "warmupEnd":try object(warmupEnd),"steadyEnd":try object(steadyEnd),
+            "phases":try object(phases),"steadyWindow":try object(steady),
+            "meanMeetsNativeTarget":steady.meanRenderRatio<0.2,"requiresMaxWorkload":requireMaxWorkload]
+        let data=try JSONSerialization.data(withJSONObject:report,options:[.prettyPrinted,.sortedKeys])
+        try data.write(to:instrument.directory.deletingLastPathComponent().appendingPathComponent("Stress-sloop-saved-sequencer.json"),options:.atomic)
+        print("SAVED SEQUENCER STRESS \(platform): \(String(decoding:data,as:UTF8.self))")
+        XCTAssertEqual(steadyEnd.backend,.native)
+        let playingBefore=try XCTUnwrap(playingStart.nativeWorkload)
+        let playingAfter=try XCTUnwrap(steadyEnd.nativeWorkload)
+        let loopAfter=try XCTUnwrap(loopOnlyEnd.nativeWorkload)
+        XCTAssertGreaterThan(loopAfter.nonzeroDSPSamples,playingBefore.nonzeroDSPSamples,"Recorded loop must produce audio before live pad attacks")
+        XCTAssertGreaterThanOrEqual(playingAfter.framesWhilePlaying,playingBefore.framesWhilePlaying,"Native workload counters must not reset")
+        let playingFrames=playingAfter.framesWhilePlaying >= playingBefore.framesWhilePlaying ? playingAfter.framesWhilePlaying-playingBefore.framesWhilePlaying : 0
+        XCTAssertGreaterThanOrEqual(Double(playingFrames),steady.elapsedSeconds*steadyEnd.sampleRate*0.9,"Transport must actually play the saved sequence")
+        if requireMaxWorkload {
+            XCTAssertEqual(playingAfter.activeTrackMask,15,"All four tracks must be active")
+            XCTAssertGreaterThanOrEqual(playingAfter.peakSharedSynthVoices,8,"Shared synth pool must reach its eight-voice budget")
+            XCTAssertGreaterThanOrEqual(playingAfter.peakDrumVoices,6,"All six drum voices must overlap")
+            XCTAssertEqual(playingAfter.configuredEffectMask & 2047,2047,"Every supported effect configuration must be exercised")
+        }
+        XCTAssertTrue(instrument.running)
+        XCTAssertGreaterThanOrEqual(steady.elapsedSeconds,measuredSeconds)
+        XCTAssertGreaterThanOrEqual(input.retriggerCycles,100,"At least 100 of the nominal 120 pad attacks must arrive")
+        XCTAssertEqual(input.keyDownEvents,input.keyUpEvents)
+        for window in phases {
+            XCTAssertTrue(window.zeroShortages,"\(window.phase): saved-loop core/output shortage")
+            XCTAssertGreaterThanOrEqual(window.requestedOutputCoverage,0.9,"Output callbacks must cover the measured clock")
+            XCTAssertLessThan(window.meanRenderRatio,0.2,"Native saved-loop render must retain 80% mean CPU headroom")
+        }
+    }
+
     @MainActor private func capture(_ instrument: Instrument) throws -> AudioDiagnostics {
         var value:AudioDiagnostics?
         let captured=expectation(description:"Worker diagnostics boundary")
