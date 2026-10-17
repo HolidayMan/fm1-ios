@@ -1,13 +1,27 @@
 import SwiftUI
 
 @main struct FM1App:App {
-    @StateObject private var instrument=Instrument()
+    @StateObject private var instrument:Instrument
+    init() {
+        if let relative=ProcessInfo.processInfo.environment[AppLaunchFixture.environmentKey] {
+            let documents=FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0]
+            let fixture=AppLaunchFixture.resolve(relative,documents:documents)
+            let model=Instrument(directory:fixture ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),preferences:UserDefaults(suiteName:"LifecycleUI.\(UUID().uuidString)")!)
+            if fixture == nil {model.message="The isolated lifecycle fixture is unavailable."}
+            _instrument=StateObject(wrappedValue:model)
+        } else {_instrument=StateObject(wrappedValue:Instrument())}
+    }
     @Environment(\.scenePhase) private var scenePhase
+    private var automaticStartupAllowed:Bool {
+        !ProcessInfo.processInfo.arguments.contains("--panel-touch-diagnostics") &&
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil && NSClassFromString("XCTestCase") == nil
+    }
     var body:some Scene {
         WindowGroup {
             InstrumentView(instrument:instrument)
                 .preferredColorScheme(.dark)
-                .onChange(of:scenePhase) {phase in if phase != .active {instrument.pause()}}
+                .onAppear {instrument.sceneChanged(active:scenePhase == .active,autoStart:automaticStartupAllowed)}
+                .onChange(of:scenePhase) {phase in instrument.sceneChanged(active:phase == .active,autoStart:automaticStartupAllowed)}
         }
     }
 }
@@ -33,8 +47,8 @@ struct InstrumentView:View {
                     Spacer(minLength:4)
                     if instrument.busy {ProgressView().controlSize(.mini)}
                     Text(instrument.status).font(.system(size:9)).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth:160,alignment:.trailing)
-                    Button {instrument.running ? instrument.pause() : instrument.resume();ControlHaptics.shared.button()} label:{Image(systemName:instrument.running ? "pause.fill" : "play.fill").frame(width:31,height:28)}
-                        .disabled(instrument.selected == nil || instrument.busy).accessibilityLabel(instrument.running ? "Pause instrument" : "Resume instrument")
+                    Button {instrument.playbackWanted ? instrument.pause() : instrument.resume();ControlHaptics.shared.button()} label:{Image(systemName:instrument.playbackWanted ? "pause.fill" : "play.fill").frame(width:31,height:28)}
+                        .disabled(instrument.selected == nil || (instrument.busy && !instrument.playbackWanted)).accessibilityLabel(instrument.playbackWanted ? "Pause instrument" : "Resume instrument")
                     Button {instrument.toggleMute();ControlHaptics.shared.button()} label:{Image(systemName:instrument.muted ? "speaker.slash" : "speaker.wave.2").frame(width:31,height:28)}.accessibilityLabel("Mute audio")
                     Button {choosingFinish=true;ControlHaptics.shared.button()} label:{
                         HStack(spacing:0) {Circle().fill(finish.swatch).frame(width:16,height:16);Circle().fill(finish.secondarySwatch).frame(width:16,height:16).padding(.leading,-7)}.frame(width:31,height:28)

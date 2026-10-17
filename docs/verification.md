@@ -144,7 +144,7 @@ The user's recorded drum loop exposed an untested workload: prior three-key stre
 
 The exact SLOOP 2.7.1 package now selects source-native execution; unmatched firmware retains the interpreter. Native source/resource provenance is pinned and generated-header corruption/missing-input guards were independently checked. 68 native Rust tests and 63 interpreter-only tests passed, including all four user-sample slots, full flash persistence, FIFO chunking, independent instances, master smoothing and record/save/reopen. 182 upstream DSP goldens were unchanged; this is not a claim of complete application PCM/boot/input-timing parity.
 
-Keyboard hit testing now covers the small dead gutters/bottom strip while preserving drawn-control priority and multitouch ownership. Launch restores the remembered firmware paused; absent a remembered installed choice, it prefers installed SLOOP 2.7.1 or the newest installed SLOOP release. No automatic download occurs. Six initial targeted geometry/selection tests and 16 final focused Swift tests passed, including optional backend diagnostics and bundled license notices. A separate independent review found no actionable UI issue.
+Keyboard hit testing now covers the small dead gutters/bottom strip while preserving drawn-control priority and multitouch ownership. This historical build restored the remembered firmware paused (superseded by the lifecycle revision below); absent a remembered installed choice, it prefers installed SLOOP 2.7.1 or the newest installed SLOOP release. No automatic download occurs. Six initial targeted geometry/selection tests and 16 final focused Swift tests passed, including optional backend diagnostics and bundled license notices. A separate independent review found no actionable UI issue.
 
 ### Simulator integration
 
@@ -214,3 +214,10 @@ Signed clean Release and test/UI artifacts are under `build-device/NativeSloop7F
 
 
 Build 0.3.2 (7) was subsequently installed and launched on the paired iPhone 12. Device inventory confirms the version/build; all three firmware packages and all three flash files remain byte-identical to the fresh pre-install copy. Receipts: `build-device/NativeSloop7Final/{install,launch,apps,retention}.json`; private backup: `Research/HapticsBuild7/before/Firmwares`. Physical haptic feel is left for the owner to assess; no physical sensory acceptance is claimed.
+
+
+## Automatic startup and lifecycle resume — 0.3.3 (8) implementation stage
+
+Real app appearance/activation now starts the remembered/default installed firmware. Model construction alone remains idle for isolated tests. Inactive/background transitions pause and checkpoint without changing manual intent; active return reconciles the latest intent, including return before stop/save completes. Explicit Pause stays paused across warm Home/return within the same process; a fresh normal process launch starts automatically. OS interruptions, output disconnect and failures retain separate holds; interruption-ended without shouldResume and lost outputs require explicit Play.
+
+Thirteen targeted model/policy/selection tests passed, including suspended-worker pause/load/activation races, interruption cases, retained failure holds and a deterministic stale-failure/explicit-retry regression. Ticketed completions and an explicit retry epoch prevent old worker results from overriding newer user intent. Independent review passed. The real simulator UI case passed cold-launch Running → Home/return Running → manual Pause → Home/return Paused → Resume Running, checking actual runtime status. Existing repeated-row/bottom-edge HID also passed. Test application fixture paths and preferences are isolated; normal/HID/XCTest startup guards avoid accidental owner-project playback during tests. This stage was committed before the requested separate button-haptic repair; physical delivery will use one combined final build. Native core is unchanged.

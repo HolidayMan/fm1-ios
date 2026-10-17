@@ -31,8 +31,8 @@ measurements and limits. No runtime JIT is used.
 1. Choose firmware → pick one of 53 pinned catalogue releases, or Import .fwsc from Files.
 2. Catalogue downloads are checked against their recorded size and SHA-256, then validated by the core before entering the private library. Import remains available for other releases.
 3. Play chords on the 27 keys; drag knobs vertically; hold hardware buttons for firmware-specific combinations. Tap the LCD to enlarge it.
-4. Pause/resume with the top transport; master controls the firmware's ADC. The speaker control is a separate output mute.
-5. Each imported version has its own emulated flash. Saves inside the firmware persist; progress auto-checkpoints every five seconds, on firmware changes and on pause. Leaving the foreground pauses audio.
+4. The remembered/default installed firmware starts automatically on app launch. Pause/resume with the top transport; an explicit pause survives background/foreground transitions within the running app. Master controls the firmware's ADC. The speaker control is a separate output mute.
+5. Each imported version has its own emulated flash. Saves inside the firmware persist; progress auto-checkpoints every five seconds, on firmware changes and on pause. Leaving the foreground temporarily pauses audio; returning resumes it unless explicitly paused. System interruptions and removed audio outputs retain their own resume rules.
 
 The signed app includes catalogue metadata, not firmware binaries. It downloads selected releases on demand from M-VAVE and FM-1 Firmware Hub. The snapshot covers 52 Hub releases plus Stock V15; it is not an exhaustive claim about every firmware on the internet. The stock update does not include the factory presets: upstream generates a small substitute bank. Do not describe this as the original 128 factory sounds or perfect hardware audio parity.
 

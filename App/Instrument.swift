@@ -16,6 +16,7 @@ final class Instrument: ObservableObject {
     @Published var selected: Firmware?
     @Published var running = false
     @Published var busy = false
+    @Published private(set) var playbackWanted = false
     @Published var message: String?
     @Published var screen: CGImage?
     @Published var leds: [Float] = Array(repeating: 0, count: 41)
@@ -23,7 +24,7 @@ final class Instrument: ObservableObject {
     @Published var muted = false
     @Published var volume: Double = 0.7
     @Published private(set) var audioDiagnostics = AudioDiagnostics()
-    private let worker = DispatchQueue(label: "fm1.instrument", qos: .userInteractive)
+    private let worker: DispatchQueue
     private var machine: UnsafeMutableRawPointer?
     private var engine: AVAudioEngine?
     private var sourceNode: AVAudioSourceNode?
@@ -54,7 +55,14 @@ final class Instrument: ObservableObject {
     let directory: URL
     private let preferences: UserDefaults
     private var restoredSelectionNeedsLoad = false
-    init(directory: URL? = nil, preferences: UserDefaults = .standard) {
+    // Main-thread policy and operation receipts; machine state stays on worker.
+    private var playbackPolicy=PlaybackPolicy()
+    private let playbackDemand=PlaybackDemand()
+    private var playbackTicket=0
+    private var workerPlaybackEpoch=0 // Worker only: explicit Play that started this engine.
+    private var firmwareLoadPending=false, importPending=false
+    init(directory: URL? = nil, preferences: UserDefaults = .standard, worker:DispatchQueue? = nil) {
+        self.worker=worker ?? DispatchQueue(label:"fm1.instrument",qos:.userInteractive)
         self.preferences = preferences
         self.directory = directory ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Firmwares", isDirectory: true)
         do { try FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true) }
@@ -64,12 +72,17 @@ final class Instrument: ObservableObject {
         restoredSelectionNeedsLoad = selected != nil
         if selected != nil {status = "Paused · tap Resume"}
         observations.append(NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
-            if let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-               AVAudioSession.InterruptionType(rawValue: raw) == .began { self?.pause() }
+            guard let raw=note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type=AVAudioSession.InterruptionType(rawValue:raw) else{return}
+            if type == .began {self?.interruptionBegan()}
+            else {
+                let options=AVAudioSession.InterruptionOptions(rawValue:note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0)
+                self?.interruptionEnded(shouldResume:options.contains(.shouldResume))
+            }
         })
         observations.append(NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
             if let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
-               AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable { self?.pause() }
+               AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable { self?.outputDisconnected() }
         })
     }
     func refresh() {
@@ -79,7 +92,10 @@ final class Instrument: ObservableObject {
         }.sorted {$0.name.localizedStandardCompare($1.name) == .orderedAscending}
     }
     func importFirmware(_ url: URL, removeAfterImport: Bool = false) {
-        busy = true
+        guard !busy else{return}
+        playbackPolicy.play();playbackDemand.clearFailure();updatePlaybackDemand()
+        importPending=true
+        let ticket=beginPlaybackOperation(),epoch=playbackDemand.epoch
         worker.async { [self] in
             let access = url.startAccessingSecurityScopedResource()
             defer {
@@ -116,17 +132,99 @@ final class Instrument: ObservableObject {
                     }
                 let dest = existing ?? directory.appendingPathComponent(name).appendingPathExtension("fwsc")
                 if existing == nil {try data.write(to: dest, options: .atomic)}
-                DispatchQueue.main.async { self.refresh(); self.busy = false; if let fw = self.firmwares.first(where: {$0.url == dest}) { self.load(fw) } }
-            } catch { report(error) }
+                DispatchQueue.main.async {
+                    self.importPending=false;self.refresh()
+                    if let fw=self.firmwares.first(where:{$0.url == dest}) {self.loadFirmware(fw)}
+                    else {self.finishPlaybackOperation(ticket,live:self.running)}
+                }
+            } catch { failPlaybackOperation(error,ticket:ticket,epoch:epoch,endedImport:true) }
         }
     }
     private func failure(_ text: String) -> NSError { NSError(domain: "FM1", code: 1, userInfo: [NSLocalizedDescriptionKey: text]) }
-    private func report(_ error: Error) {
-        DispatchQueue.main.async { self.busy = false; self.message = error.localizedDescription }
+    private func updatePlaybackDemand() {
+        playbackWanted=playbackPolicy.wantsPlayback
+        playbackDemand.set(playbackPolicy.shouldRun)
     }
-    func load(_ fw: Firmware) {
-        guard !busy else {return}
-        busy = true
+    private func beginPlaybackOperation()->Int {
+        playbackTicket += 1;busy=true;return playbackTicket
+    }
+    private func finishPlaybackOperation(_ ticket:Int,live:Bool) {
+        guard ticket == playbackTicket else{return}
+        busy=false;running=live
+        if !live {status=selected == nil ? "Choose a firmware to begin" : "Paused · tap Resume"}
+        else {status="Running · 44.1 kHz"}
+    }
+    private func completePlaybackOperation(_ ticket:Int) {
+        let live=playing
+        DispatchQueue.main.async {self.finishPlaybackOperation(ticket,live:live)}
+    }
+    private func failPlaybackOperation(_ error:Error,ticket:Int,epoch:Int,endedLoad:Bool=false,endedImport:Bool=false) {
+        playbackDemand.fail(epoch:epoch)
+        stopWorker();saveFlash(waitForWrite:true)
+        DispatchQueue.main.async {
+            if endedImport {self.importPending=false}
+            if endedLoad {self.firmwareLoadPending=false}
+            // Scene changes preserve this epoch: real failures still hold. Only
+            // an explicit newer Play/load may supersede an old failure receipt.
+            guard epoch == self.playbackDemand.epoch else {
+                if self.restoredSelectionNeedsLoad,self.playbackPolicy.shouldRun,!self.firmwareLoadPending,!self.importPending {self.requestPlayback()}
+                return
+            }
+            self.playbackPolicy.hold();self.updatePlaybackDemand();self.message=error.localizedDescription
+            self.finishPlaybackOperation(ticket,live:false)
+        }
+    }
+    private func report(_ error:Error) {
+        DispatchQueue.main.async {self.message=error.localizedDescription}
+    }
+    /// This is the only start decision. Recheck after a potentially slow engine start.
+    private func applyPlaybackWorker() throws {
+        if playbackDemand.shouldRun, machine != nil {
+            try startWorker()
+            if !playbackDemand.shouldRun {stopWorker();saveFlash(waitForWrite:true)}
+        } else if playing {stopWorker();saveFlash(waitForWrite:true)}
+    }
+    private func queuePlayback(forceCheckpoint:Bool=false) {
+        updatePlaybackDemand()
+        let ticket=beginPlaybackOperation()
+        let checkpointTask=forceCheckpoint ? CheckpointBackgroundTask() : nil
+        worker.async { [self] in
+            let epoch=playbackDemand.epoch
+            do {
+                if forceCheckpoint,machine != nil {stopWorker();saveFlash(waitForWrite:true)}
+                try applyPlaybackWorker();completePlaybackOperation(ticket)
+            } catch {failPlaybackOperation(error,ticket:ticket,epoch:epoch)}
+            DispatchQueue.main.async {checkpointTask?.end()}
+        }
+    }
+    private func requestPlayback() {
+        updatePlaybackDemand()
+        if restoredSelectionNeedsLoad,let selected,!firmwareLoadPending,!importPending,playbackPolicy.shouldRun {
+            loadFirmware(selected)
+        } else {queuePlayback()}
+    }
+    func sceneChanged(active:Bool,autoStart:Bool=true) {
+        guard playbackPolicy.scene(active:active,autoStart:autoStart) else{return}
+        if active {requestPlayback()} else {queuePlayback(forceCheckpoint:true)}
+    }
+    func interruptionBegan() {
+        playbackPolicy.interruptionBegan();queuePlayback(forceCheckpoint:true)
+    }
+    func interruptionEnded(shouldResume:Bool) {
+        playbackPolicy.interruptionEnded(shouldResume:shouldResume);requestPlayback()
+    }
+    func outputDisconnected() {
+        playbackPolicy.hold();queuePlayback(forceCheckpoint:true)
+    }
+    func load(_ fw:Firmware) {
+        guard !busy else{return}
+        playbackPolicy.play();playbackDemand.clearFailure();updatePlaybackDemand()
+        loadFirmware(fw)
+    }
+    private func loadFirmware(_ fw:Firmware) {
+        guard !firmwareLoadPending else{return}
+        firmwareLoadPending=true
+        let ticket=beginPlaybackOperation(),epoch=playbackDemand.epoch
         worker.async { [self] in
             do {
                 let size = try fw.url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
@@ -144,35 +242,20 @@ final class Instrument: ObservableObject {
                     _ = saved.withUnsafeBytes {instrument_restore(next,$0.bindMemory(to:UInt8.self).baseAddress,saved.count)}
                 }
                 DispatchQueue.main.async {
-                    self.selected = fw; self.restoredSelectionNeedsLoad = false
+                    self.selected = fw; self.restoredSelectionNeedsLoad = false;self.firmwareLoadPending=false
                     self.preferences.set(fw.id, forKey: FirmwareSelection.preferenceKey)
                     self.screen = nil; self.status = "Booting…"
                 }
-                try startWorker()
-                let live = playing
-                DispatchQueue.main.async { self.busy = false; self.running = live }
-            } catch { report(error) }
+                try applyPlaybackWorker()
+                completePlaybackOperation(ticket)
+            } catch { failPlaybackOperation(error,ticket:ticket,epoch:epoch,endedLoad:true) }
         }
     }
     func resume() {
-        guard !busy else {return}
-        guard let selected else {return}
-        if restoredSelectionNeedsLoad {load(selected);return}
-        busy = true
-        worker.async { [self] in
-            do {try startWorker(); let live=playing; DispatchQueue.main.async {self.busy=false;self.running=live}}
-            catch {report(error)}
-        }
+        playbackPolicy.play();playbackDemand.clearFailure();requestPlayback()
     }
     func pause() {
-        let checkpointTask = CheckpointBackgroundTask()
-        worker.async { [self] in
-            stopWorker(); saveFlash(waitForWrite: true)
-            DispatchQueue.main.async {
-                self.running = false; self.status = self.selected == nil ? "Choose a firmware to begin" : "Paused"
-                checkpointTask.end()
-            }
-        }
+        playbackPolicy.pause();queuePlayback(forceCheckpoint:true)
     }
     func key(_ id: Int, _ down: Bool) {worker.async { [self] in if playing || !down {instrument_key(machine,UInt32(id),down)} }}
     func encoder(_ id: Int, _ delta: Int) {worker.async { [self] in instrument_encoder(machine,UInt32(id),Int32(delta))}}
@@ -187,6 +270,7 @@ final class Instrument: ObservableObject {
     }
     private func startWorker() throws {
         guard machine != nil, !playing else {return}
+        workerPlaybackEpoch=playbackDemand.epoch
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default, options: [])
         try session.setPreferredSampleRate(44100)
@@ -262,11 +346,21 @@ final class Instrument: ObservableObject {
             let led = lights
             let slow = health.recentRenderRatio > 1
             DispatchQueue.main.async {
+                guard !self.busy,self.running,self.playbackPolicy.shouldRun else{return}
                 self.screen = image; self.leds = led
                 self.status = state == 2 ? "Firmware stopped — try another package" : (slow ? "Audio engine is slower than real time" : "Running · 44.1 kHz")
             }
             lastSnapshot = now
-            if state == 2 { stopWorker(); DispatchQueue.main.async { self.running = false }; return }
+            if state == 2 {
+                let epoch=workerPlaybackEpoch
+                playbackDemand.fail(epoch:epoch);stopWorker()
+                DispatchQueue.main.async {
+                    guard epoch == self.playbackDemand.epoch else{return}
+                    self.playbackPolicy.hold();self.updatePlaybackDemand();self.running=false
+                    self.status="Firmware stopped — try another package"
+                }
+                return
+            }
         }
         if now - lastSave > 5 { saveFlash(); lastSave = now }
         publishDiagnostics()
