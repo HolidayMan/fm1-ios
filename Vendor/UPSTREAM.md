@@ -20,6 +20,25 @@ remain unchanged.
 Pure register-add/branch pairs may share one dispatch only when both instruction
 ticks fit before the bus's next event; otherwise execution uses the ordinary
 per-instruction path. No audio samples, guest instructions or clock cycles are
-dropped. Experimental traces, static multi-operation handlers and polling-loop
+dropped. Earlier experimental traces, hand-selected superinstructions and polling-loop
 reductions were not retained because they did not improve total workload time
 consistently against this smaller implementation.
+
+The Apple interpreter also supports statically compiled C hot-block kernels.
+Local measured decoded XIP blocks select build-time kernels; binding requires
+exact PC, length, every compact descriptor field and instruction metadata. Kernels
+run only while the full block fits before the next observable event, and stop
+before unsupported, MMIO or tracked code-memory operations. The reference Rust
+path handles those boundaries. Rust callback panics are contained until the C
+frame returns, and cross-language state layouts are checked by field offset.
+No runtime machine-code generation or executable-memory mutation is used.
+
+The generator and C templates are original local adaptations of the attributed
+Rust semantics. Firmware-derived captures, count profiles, generated kernels and
+manifests remain in ignored Research/Generated; they are not vendored or published.
+Builds explicitly opt in with FM1_STATIC_KERNELS and reject stale/corrupt manifests.
+RAM blocks use the original Rust interpreter because mixed C/Rust dispatch there
+was slower on Stock. Without generated kernels the original Rust interpreter remains
+the default.
+Core/tools/build_static_core.py verifies inputs and freezes a target-specific
+archive with a receipt containing source, header and firmware hashes.

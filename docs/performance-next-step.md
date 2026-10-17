@@ -1,17 +1,25 @@
-# Remaining real-time limit on iPhone 12
+# Real-time optimization on iPhone 12
 
-The 2026-10-17 Release measurements confirm that the generic interpreter remains CPU-bound for Felucca1.6.1 and SLOOP2.7.1. The source ring fixes production scheduling and exposes actual shortages; it does not make insufficient CPU throughput disappear. Current measured render budgets are approximately131% and121%, respectively, before allowing safety margin or full polyphony. Stock averages48%, with rare output shortages in the short test.
+The retained baseline at `70b25ce` was CPU-bound for Felucca 1.6.1 and SLOOP 2.7.1. Their physical iPhone 12 mean render budgets were 130.6% and 121.5%; actual output sample shortages were 24.24% and 19.54%. The source ring exposed the shortages but could not compensate for insufficient interpreter throughput.
 
-## Evidence and rejected approaches
+## Reproduction and profiling
 
-The first retained interpreter changes improve Mac throughput by roughly6–8% lower elapsed time in the final comparison over the original prototype with unchanged deterministic audio output. Subsequent XIP traces, large generated static handlers, pure scan-loop reductions and pointer/code-layout experiments were benchmarked and rejected when they did not produce a repeatable net gain against that smaller checkpoint. Correctness tests alone are insufficient grounds to retain performance complexity.
+A dedicated iPhone 12 simulator reproduced the bottleneck: 112.09% / 109.23% mean render budgets and 12.04% / 11.16% output shortages for Felucca / SLOOP. This is an iPhone 12 device configuration running on the Mac's M1 Pro CPU, not emulated A14 performance. Controlled runs use frozen Release binaries and identical firmware/initial flash snapshots. See `performance-lab.md` for methods and results.
 
-Instruction-level profiling identified the main remaining costs inside run_fast: fast-op dispatch/operations (~34%), retirement bookkeeping (~12.5%), block lookup (~8.4%), iteration (~6.4%), tick handling (~6.1%) and careful-path selection (~5.4%). These are Mac profile observations, not direct iPhone instruction attribution. The exact local profiles and rejected experiments remain private under /tmp; they are not shipped.
+Instruction-level profiles attributed the main costs to operation dispatch, retirement bookkeeping, block lookup and event-boundary checks. Roughly 84–85% of CPU0 instructions in the heavier firmware ran in the main context; interrupt audio processing was only about 11–13%. Smaller host execution batches and simple idle-loop reductions did not solve the bottleneck. A generic C threaded interpreter also failed to produce a sufficient gain by itself. Host PGO improved throughput modestly, but its profiles did not match the iOS target and were not shipped.
 
-## Concrete next architecture experiment — not implemented
+## Retained implementation
 
-Prototype a statically compiled direct-threaded hot-op interpreter, with the current Rust interpreter as a correctness fallback. This is a different dispatch architecture, not executable-code generation/JIT. Evaluate whether a small C backend using compiler-supported threaded dispatch is preferable to Rust's central enum match, before committing to a complete backend.
+The optimized build contains 768 statically compiled hot-block kernels selected from local Stock, Felucca and SLOOP profiles. Constant decoded operands let the compiler simplify instruction dispatch and register access across a block. They execute from ordinary signed application code: no runtime code generation, executable-memory mutation or JIT.
 
-Keep CPU registers, flags, guest clocks, event boundaries, code-write invalidation and shared CPU scheduling semantically identical. Fall back at unsupported operations, MMIO/interrupt boundaries and unproven paired-instruction cases. Do not reduce the guest clock, skip control scanning heuristically or replace firmware engines with approximations.
+Binding checks the complete decoded block: PC, length, every descriptor field and instruction metadata. The full block must fit before the next observable event. Unsupported operations, MMIO and tracked code-memory writes return to the reference path without consuming the unexecuted instruction. Register/flag state, guest ticks, interrupt boundaries and shared CPU scheduling retain reference semantics. RAM-resident code is excluded from generated kernels and stays entirely on the original Rust execution path, avoiding C fallback overhead. Unmatched firmware and changed blocks use the normal interpreter.
 
-The experiment is successful only if it produces a substantial measured gain against the retained baseline, unchanged audio/LCD/flash fingerprints, differential register/flags/tick/MMIO results, bounded cache memory, and physical Release output measurements with useful headroom on Stock, Felucca and SLOOP. More complex firmware, full polyphony, long sessions and thermal behavior then need their own matrix. A short test with nonzero audio is not a quality pass.
+Generated firmware-derived headers, captures and manifests stay in ignored `Research/Generated`; only the generic generator and execution infrastructure are tracked. Build verification rejects corrupt headers and changed generator/interpreter sources. A missing generated header produces the generic interpreter, not an unverified optimized build.
+
+## Acceptance and remaining work
+
+The first host smoke comparison reduced Felucca and SLOOP wall time by approximately 46% and 45%, with exactly matching PCM, LCD and flash fingerprints for all three firmware fixtures. Stock was approximately unchanged. The final RAM fallback also removes the initial Stock regression. These are host measurements. Final build 4 passed three minute-long steady audio scenarios on both the simulator and physical iPhone 12, with zero core/output shortages in every measured phase; full timing and limitations are in `verification.md` and `performance-lab.md`.
+
+Correctness checks cover all generated kernels against reference execution, descriptor mutation rejection, budget/prefix boundaries, memory side effects, panic containment and C/Rust ABI offsets. Sustained audio tests separately check repeated attacks, chords and encoder activity after warmup, requiring zero additional core/output sample shortages. The original 25-second startup-inclusive comparison remains separate.
+
+A short benchmark cannot establish long-session thermal behavior, every patch, full polyphony, touch-to-sound latency or listening acceptance. Other firmware releases retain compatibility fallback but need their own profiles and validation before equivalent performance can be claimed. No guest-clock reduction, sample dropping or approximate replacement of firmware synthesis is used.

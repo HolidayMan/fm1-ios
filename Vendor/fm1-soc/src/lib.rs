@@ -495,6 +495,7 @@ impl Bus for Soc {
             xip_len: self.xip.len() as u32,
         })
     }
+    fn thread_mem(&mut self) -> Option<fm1_core::JitMem> { self.jit_mem() }
     fn code_writes(&self) -> Option<u64> {
         Some(self.ram.code_writes)
     }

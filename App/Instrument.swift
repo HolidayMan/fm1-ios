@@ -264,10 +264,14 @@ final class Instrument: ObservableObject {
         // queued keys/knobs/pause remain responsive on this same serial worker.
         if reschedule { requestProduce(g) }
     }
-    private func publishDiagnostics(force: Bool = false) {
-        let now = ProcessInfo.processInfo.systemUptime
-        guard force || now - lastDiagnostics >= 2 else { return }
-        lastDiagnostics = now
+    /// Capture counters at a worker-queue boundary without resetting metrics or writing to disk.
+    func captureAudioDiagnostics(completion: @escaping (AudioDiagnostics) -> Void) {
+        worker.async { [self] in
+            let report = makeDiagnostics(now: ProcessInfo.processInfo.systemUptime)
+            DispatchQueue.main.async { completion(report) }
+        }
+    }
+    private func makeDiagnostics(now: TimeInterval) -> AudioDiagnostics {
         var diagnostic = health.diagnostics(elapsed: now - playbackStart)
         diagnostic.firmware = activeID
         if let metrics = audioRing?.metrics {
@@ -283,10 +287,18 @@ final class Instrument: ObservableObject {
             $0.withMemoryRebound(to: CChar.self, capacity: machineCapacity) { String(cString: $0) }
         }
         diagnostic.system = ProcessInfo.processInfo.operatingSystemVersionString
+        diagnostic.lowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+        diagnostic.thermalState = ProcessInfo.processInfo.thermalState.rawValue
         diagnostic.hardwareSampleRate = AVAudioSession.sharedInstance().sampleRate
         diagnostic.hardwareIOSeconds = AVAudioSession.sharedInstance().ioBufferDuration
         diagnostic.updatedAt = Date()
-        let report = diagnostic
+        return diagnostic
+    }
+    private func publishDiagnostics(force: Bool = false) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard force || now - lastDiagnostics >= 2 else { return }
+        lastDiagnostics = now
+        let report = makeDiagnostics(now: now)
         DispatchQueue.main.async { self.audioDiagnostics = report }
         let url = directory.deletingLastPathComponent().appendingPathComponent("AudioDiagnostics.json")
         storage.async {
@@ -335,6 +347,9 @@ struct AudioDiagnostics: Codable, Equatable {
     var firmware: String?
     var device = ""
     var system = ""
+    var lowPowerModeEnabled: Bool?
+    /// ProcessInfo.ThermalState raw value: nominal 0, fair 1, serious 2, critical 3.
+    var thermalState: Int?
     var updatedAt = Date()
     var elapsedSeconds: Double = 0
     var sampleRate: Double = 44100

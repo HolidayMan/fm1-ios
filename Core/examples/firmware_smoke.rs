@@ -23,6 +23,11 @@ fn main(){
         let lcd_hash=digest(pixels.iter().flat_map(|p|p.to_le_bytes()));
         let flash_hash=digest(flash.iter().copied());
         assert!(unsafe{instrument_restore(m,flash.as_ptr(),n)});
+        if let Ok(directory)=env::var("FM1_KERNEL_EXPORT") {
+            let name=std::path::Path::new(&path).file_stem().unwrap().to_string_lossy();
+            fs::create_dir_all(&directory).unwrap();
+            fs::write(std::path::Path::new(&directory).join(format!("{name}.jsonl")),unsafe{&*m}.static_kernel_blocks()).unwrap();
+        }
         unsafe{instrument_destroy(m)};
         let elapsed=start.elapsed().as_secs_f64();
         println!("{}: state={} nonblack={} frames={} peak={:.4} energy={:.3} wall={:.2}s audio={:.2}s ratio={:.2}x",path,state,changes,frames,peak,energy,elapsed,frames as f64/44100.0,frames as f64/44100.0/elapsed);

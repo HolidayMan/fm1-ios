@@ -10,6 +10,9 @@ pub struct Instrument {
     audio: VecDeque<i16>, halted: bool,
 }
 impl Instrument {
+    /// Offline profiling tool output; contains firmware-derived decoded instructions.
+    /// Keep generated files local and ignored, just like the input firmware package.
+    pub fn static_kernel_blocks(&self)->String {self.cpu.static_kernel_blocks()}
     fn load(bytes: &[u8]) -> Result<Self, String> {
         if !(960..=MAX_PACKAGE).contains(&bytes.len()) { return Err("Package size is invalid (960 bytes to 4 MiB).".into()); }
         let fw = fm1_soc::stock_from_package(bytes, None)?;

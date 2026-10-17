@@ -83,3 +83,56 @@ Final clean Release app0.2.0(2), bundle com.local.fm1.instrument, built in build
 ### Final simulator integration
 
 Rebuilt the final Rust Release simulator archive and ran current native app tests on the dedicated iPhone12/iOS27.0 simulator:10 model/audio/import tests passed,3 physical-only tests skipped, and the playback/firmware-switch UI smoke passed. The reimport test confirmed exact original selected ID, unchanged installed-ID set, byte-identical existing flash file immediately after reimport, and staging cleanup. This is importer integration coverage, not an end-to-end Files-provider test or full patch-state playback verification. Result: build-final-simulator/Final-validation.xcresult (ignored). Independent reviewers found no blocking issue in the retained core, audio ring or import identity change.
+
+
+## Static hot-block optimization — intermediate build 3, 2026-10-17
+
+Candidate app 0.2.1 (3) uses 768 build-time kernels guarded by exact decoded-block equality, with reference fallback. No runtime JIT, guest-clock reduction or synthesis approximation. Generated firmware-derived code remains local/ignored. Independent core review found no remaining blocker at generated-header SHA-256 `1be5505c7ec9fb5e65e3878518eb6e8f392194b13f02211cd5a33a53e083d505`.
+
+- Paired host ABBA against the frozen `70b25ce` executable (two runs per implementation, alternating firmware order): Felucca 10.5526→5.4700 seconds (48.16% less time), SLOOP 10.0754→5.5750 (44.67% less), Stock 3.7558→3.8550 (2.64% more). All PCM/LCD/flash fingerprints match in every run. This is Mac throughput, not phone latency.
+- 61 Rust workspace Release tests passed; six focused suites include all 768 generated kernels across 96 states, descriptor mutation rejection, entry budgets/prefixes, code-write/MMIO fallback, panic containment and ABI offsets. All six also passed C AddressSanitizer and UndefinedBehaviorSanitizer checks with halt-on-error.
+- The dedicated iPhone 12 / iOS 27.0 simulator reproduced the baseline CPU bottleneck. Three 25-second comparisons, three 60-second steady audio stress cases and eight ordinary audio/ring/window tests passed. Exact firmware and initial flash snapshots were checked; prior simulator package/save bytes were restored and verified after XCTest relocated its data container. See `performance-lab.md` for complete methodology and receipts.
+- Simulator steady stress means: Stock 67.23%, Felucca 58.91%, SLOOP 60.27%; zero additional missing core frames or output samples in every measured phase. Stock's three-key phase recent p95 was 99.04%, so its stress headroom remains small. Warmup is separate: Stock had 512 output samples missing during warmup; Felucca/SLOOP each retain their known 3,072 initial core-missing frames.
+- Stock's startup-inclusive simulator mean increased from 47.36% to 56.86%, despite a comparable recent p95 (52.76% to 52.40%); this result is retained rather than dismissed. There is no baseline with the new repeated-attack stress scenario, so its load cannot be attributed to the optimization alone.
+
+### Physical iPhone 12, same retained owner saves
+
+Release test bundle built from the candidate kernel archive; iPhone13,2, iOS 26.6.2, hardware output 48 kHz / firmware source 44.1 kHz. Three original 25-second scenarios passed as measurements. Low-power mode was off and reported thermal state nominal. Firmware packages and existing saves were retained; unlike the controlled simulator, owner saves were not reset to baseline fixtures.
+
+| Firmware | Previous mean | Candidate mean / recent p95 | Candidate missing / requested output samples |
+|---|---:|---:|---:|
+| Stock V15 | 47.67% | 52.44% / 62.94% | 714 / 1,144,395 (0.0624%) |
+| Felucca 1.6.1 | 130.56% | 57.94% / 63.05% | 191 / 1,139,985 (0.0168%) |
+| SLOOP 2.7.1 | 121.50% | 59.29% / 62.90% | 15 / 1,144,836 (0.0013%) |
+
+These totals include startup and do not locate each shortage in time. The subsequent sustained physical-device run passed all three cases: Felucca mean 58.42% / recent p95 64.28%, SLOOP 60.84% / 64.45%, Stock 69.47% / 101.70%. All steady phases had zero additional core/output shortages. Stock's last-phase recent p95 exceeded budget despite zero shortages, which motivated the final RAM fallback change below. No listening, full-polyphony, long-session thermal or all-firmware acceptance follows from these short tests. Private reports: `Research/Performance/physical-aot-build3`; result bundle: `build-device/Performance-AOT/Physical.xcresult`.
+
+
+## Final RAM fallback revision — app 0.2.1 (4)
+
+Only XIP code enters the C/static-kernel backend. RAM-resident code retains the original Rust path, avoiding unnecessary partial-exit/FFI overhead in Stock's second CPU. An isolated alternating Stock comparison improved 3.87/3.93 seconds to 3.58/3.58 (about 8%); a subsequent three-firmware smoke retained exact PCM/LCD/flash fingerprints with no Felucca/SLOOP slowdown. The generated kernel content is unchanged; the source manifest was regenerated for the guard.
+
+All 62 Rust workspace Release tests passed both with and without generated kernels. Seven focused suites passed ASan/UBSan, including a new test that RAM fallback changes neither state nor ticks. Independent review found no blocker in the guard or updated build receipt. The build-3 measurements above are intermediate evidence, not mislabeled as build-4 measurements.
+
+
+Final physical iPhone 12 stress: all three 65-second cases passed (5 seconds warmup, 60 seconds measured). Every single-key, three-key and three-key-plus-encoder phase had zero additional core-missing or output-underrun samples/callbacks, approximately 100% output-clock coverage, 20 retriggers per phase and 160 encoder events. Mean / recent p95 at the end:
+
+| Firmware | Physical mean | Physical recent p95 | Steady output/core shortages |
+|---|---:|---:|---:|
+| Stock V15 | 58.75% | 93.09% | 0 / 0 |
+| Felucca 1.6.1 | 58.18% | 63.50% | 0 / 0 |
+| SLOOP 2.7.1 | 60.71% | 63.75% | 0 / 0 |
+
+Stock's phase means were 54.15%, 60.52% and 61.59%; recent p95 values 77.24%, 82.65% and 93.09%. This improves its intermediate same-device stress, but the last phase still has less margin than the other firmware. The recent p95 is a trailing 256-render window, not a full-phase percentile. These tests establish sample availability for these exact patches/input workloads; listening, long thermal sessions, all catalogue releases and full-polyphony acceptance remain separate.
+
+Private final reports: `Research/Performance/physical-aot-final-build4`; `build-device/Performance-AOT/FinalPhysicalStress.xcresult`. Simulator archive SHA-256: `7a54c09eeb1e3ddd47b74fa058aca0c4a482bf21d2d44618f2ef99e0ee203cfd`; device archive: `bd7c090007f0014e780fb1ccf69b7b7cf06b8ba635a85cda08e45bdc630ddb30`. Full source/hash receipts accompany both. Durable private core comparison/test logs are in `Research/Performance/final-core-validation`.
+
+
+Final simulator stress also passed all three cases: Stock mean 57.96% / recent p95 85.16%, Felucca 58.62% / 62.58%, SLOOP 59.66% / 63.16%. Every measured phase had zero additional core/output shortages; each firmware delivered all 2,646,528 requested steady output samples. The simulator was shut down and its prior package/save bytes restored. Final runner: `Research/Performance/aot-final-stress-4`; full details in `performance-lab.md`.
+
+### Final local delivery
+
+Clean signed Release app 0.2.1 (4) passed strict deep code-signature verification, installed over the paired connection and launched successfully on the owner's iPhone 12. Installed-app inventory confirms version/build; file inventory confirms Stock, Felucca and SLOOP packages and all three corresponding flash files remain. No uninstall, TestFlight, publication or App Review submission. Private install/launch/app/file receipts and signed executable hash are under `build-device/aot-final-*`. Owner listening acceptance is still required; this report does not call the app crackle-free across all patches or conditions.
+
+
+Final physical warmup counters remain explicit: output shortages were Stock 273, Felucca 191 and SLOOP 0 samples; Felucca/SLOOP also report 3,072 initial core-missing frames each. They are excluded from the stated steady gates, not erased or treated as a zero-startup result. Low-power mode remained off; final Stock thermal state was fair (1), with Felucca/SLOOP nominal (0). No sustained thermal acceptance is claimed.

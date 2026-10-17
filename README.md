@@ -6,7 +6,7 @@ This project is developed directly in the Software Factory project context. **Th
 
 ## Build
 
-Xcode, Rust stable, Python 3 (project generation only). No Swift packages or external Rust crates.
+Xcode, Rust, Python 3 (project and optional static-kernel generation). No Swift packages or external Rust crates.
 
 ```sh
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim
@@ -16,6 +16,8 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim
 ```
 
 Open `FM1.xcodeproj`; choose your own signing team for a physical device. Build the Rust target first. Current simulator library supports Apple Silicon.
+
+The commands above build the generic interpreter. An optimized local build additionally requires private generated kernels and their verified manifest; set `FM1_STATIC_KERNELS` to the absolute header path when building Rust. `Core/tools/build_static_core.py` verifies those inputs and freezes a target-specific archive with a source/hash receipt. The generator is in `Vendor/fm1-core/tools/generate_static_kernels.py`; firmware-derived inputs and outputs remain local under ignored `Research/Generated`. No runtime JIT is used.
 
 ## Play
 
@@ -40,6 +42,6 @@ The smoke test runs the actual binary, presses/releases a note, checks a nonblan
 
 Choose Panel color for the six manufacturer finishes; the choice persists. The native touch layout uses the available screen area instead of fixed physical proportions.
 
-Felucca and SLOOP still exceed the real-time CPU budget on the tested iPhone12; the new audio ring does not eliminate this interpreter limit. See `docs/performance-next-step.md` for the measured bottleneck and next experiment.
+The generic interpreter exceeds the real-time CPU budget for Felucca and SLOOP. Optional build-time specializations substantially reduce that cost while retaining exact interpreter fallback for other code. See `docs/performance-next-step.md` for the architecture and `docs/performance-lab.md` for controlled simulator measurements; simulator timing is not physical iPhone timing.
 
 See `docs/research.md` and `docs/verification.md` for evidence and remaining work. This is a local development prototype, not a Software Factory `ready` receipt or App Store release.

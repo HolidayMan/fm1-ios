@@ -7,3 +7,6 @@ xcuserdata/
 *.fwsc
 build-device/
 build-final-simulator/
+
+__pycache__/
+*.py[cod]

@@ -14,6 +14,8 @@
 //!   by the solver-found factor).
 
 use fm1_isa::{DecodeError, Instruction, SlotKind};
+#[cfg(fm1_threaded)]
+mod threaded;
 
 /// The memory bus. Implemented by the SoC (or by plain RAM in unit tests).
 ///
@@ -65,6 +67,11 @@ pub trait Bus {
     fn jit_mem(&mut self) -> Option<JitMem> {
         None
     }
+    /// Opt into side-effect-free direct RAM/XIP access for the static interpreter.
+    /// RAM accesses must match Soc widths/alignment; code flags guard every store.
+    /// The view stays allocated during execution; scheduled events cannot occur
+    /// within tick_room. The default preserves the original Bus-only execution.
+    fn thread_mem(&mut self) -> Option<JitMem> { None }
     /// Ticks that can pass before one of them is due.
     fn tick_room(&self) -> u64 {
         0
@@ -204,6 +211,12 @@ pub struct Cpu {
     /// Predecoded pure instruction pairs. They run only with enough clock room for both
     /// instructions; interrupt boundaries fall back to the ordinary per-op dispatcher.
     bpairs: Vec<Option<AddBranch>>,
+    #[cfg(fm1_threaded)]
+    thread_ops: Vec<threaded::ThreadOp>,
+    #[cfg(fm1_threaded)]
+    thread_blocks: Vec<threaded::ThreadBlock>,
+    #[cfg(fm1_threaded)]
+    no_threaded: bool,
     bmap: Vec<u32>,
     /// Per block: for one over RAM code, the bytes it was built from. RAM can change (code
     /// copied in, overlays), so such a block is checked against memory before every entry
@@ -250,6 +263,11 @@ pub struct Cpu {
 }
 
 impl Cpu {
+    /// Offline, local-only input for the optional build-time static-kernel generator.
+    pub fn static_kernel_blocks(&self)->String {
+        #[cfg(fm1_threaded)] {return threaded::export(self);}
+        #[cfg(not(fm1_threaded))] {String::new()}
+    }
     pub fn jit_profile_json(&self) -> String {
         let helpers = self.jit_helpers.iter().map(|(k, v)| format!("\"{k}\":{v}")).collect::<Vec<_>>().join(",");
         format!("{{\"entries\":{},\"instructions\":{},\"helpers\":{{{helpers}}}}}", self.jit_entries, self.jit_insns)
@@ -278,6 +296,9 @@ impl Cpu {
     pub fn new(entry: u32) -> Self {
         Self {
             pc: entry,
+            #[cfg(fm1_threaded)]
+            no_threaded: std::env::var_os("FM1_NO_THREADED").is_some()
+                || (!threaded::available() && std::env::var_os("FM1_THREADED_EXPERIMENT").is_none()),
             no_ram_blocks: std::env::var_os("FM1_NO_RAM_BLOCKS").is_some(),
             ..Default::default()
         }
@@ -433,11 +454,25 @@ impl Cpu {
                     return Err(e);
                 }
             };
-            let Some((id, start, len)) = blk else {
+            let Some((mut id, mut start, mut len)) = blk else {
                 sync!();
                 return Ok((n, false));
             };
-            if !careful && !self.jit_on {
+            let mut thread_partial = false;
+            #[cfg(fm1_threaded)]
+            if !careful && !self.jit_on && !self.no_threaded {
+                if let Some(result) = threaded::run(self,bus,id,pc,budget-n,n==0,u32::MAX-n) {
+                    n += result.retired; pc = result.pc;
+                    if !result.partial { continue; }
+                    // The C loop may have crossed cached blocks before a partial exit.
+                    // Resume inside its current block without another budget check.
+                    id = result.block; start = result.index;
+                    let (_, block_start, block_len) = self.blocks[id];
+                    len = block_start + block_len - start;
+                    thread_partial = true;
+                }
+            }
+            if !careful && !self.jit_on && !thread_partial {
                 if let Some(pair) = self.bpairs[id] {
                     let ticks = 2 - u64::from(n == 0);
                     if bus.tick_room() >= ticks {
@@ -544,7 +579,7 @@ impl Cpu {
                     // this instruction's tick is spent; the caller services
                     // the SoC and then runs it without ticking again
                     // (right after a glued pair's head: interrupts wait for this one)
-                    if i > start && !careful && unsafe { self.bops.get_unchecked(i as usize - 1) }.glue {
+                    if i > self.blocks[id].1 && !careful && unsafe { self.bops.get_unchecked(i as usize - 1) }.glue {
                         self.hold_irq = 1;
                     }
                     sync!();
@@ -763,6 +798,7 @@ impl Cpu {
             self.bops.clear();
             self.blocks.clear();
             self.bpairs.clear();
+            #[cfg(fm1_threaded)] { self.thread_ops.clear(); self.thread_blocks.clear(); }
             self.bbytes.clear();
             self.bver.clear();
             self.bmap.iter_mut().for_each(|x| *x = 0);
@@ -801,6 +837,8 @@ impl Cpu {
                     }
                 }
             }
+            #[cfg(fm1_threaded)]
+            self.thread_ops.push(threaded::ThreadOp::compile(op,q));
             self.bops.push(op);
             p = q;
             if f.may_jump() {
@@ -812,6 +850,10 @@ impl Cpu {
         let len = self.bops.len() as u32 - start;
         self.blocks.push((pc, start, len));
         self.bpairs.push(AddBranch::from_ops(&self.bops[start as usize..]));
+        #[cfg(fm1_threaded)]
+        self.thread_blocks.push(threaded::ThreadBlock { pc,start,len,
+            hot:u32::from(len != 0 && self.thread_ops[start as usize].supported()),
+            kernel:threaded::bind(pc,&self.thread_ops[start as usize..],&self.bops[start as usize..]) });
         // a RAM block keeps its bytes (6 more: an instruction's window reaches past its length)
         let bytes: Option<Box<[u8]>> = if xip { None } else { ram_code(bus, pc).map(|m| m[..((p - pc) as usize + 6).min(m.len())].into()) };
         if let Some(b) = &bytes {
