@@ -10,3 +10,16 @@ build-final-simulator/
 
 __pycache__/
 *.py[cod]
+
+# Local development environments and private instrument/device artifacts
+.venv/
+.env
+.env.*
+*.flash
+*.p12
+*.mobileprovision
+*.ipa
+*.xcarchive/
+*.xcresult/
+*.wav
+*.pcm

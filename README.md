@@ -1,8 +1,12 @@
-# FM-1 for iOS — local prototype
+# FM-1 for iOS
 
 Native adaptive landscape FM-1 panel (UIKit/Core Graphics + SwiftUI), with a hybrid audio engine: exact pinned SLOOP 2.7.1 can use compiled firmware source, while other packages use the pi32v2 interpreter from **fm1-emu**. No web view, factory service, account or telemetry. Downloaded packages cannot generate or modify executable host code.
 
-This project is developed directly in the Software Factory project context. **The Software Factory queue is not used or changed.**
+Unofficial iOS prototype for M-VAVE FM-1. Not affiliated with M-VAVE. Tested locally on iPhone 12; not an App Store release.
+
+![FM-1 interface](docs/screenshots/fm1-iphone12-blackgreen-v2.png)
+
+Screenshots document earlier development builds; current palettes were corrected against manufacturer photographs. See [finish references](docs/panel-finishes.md).
 
 ## Build
 
@@ -21,6 +25,20 @@ The commands above build the generic interpreter. An optimized local build addit
 
 A local hybrid build can additionally compile exact SLOOP 2.7.1 source for its
 pinned package, with the binary interpreter retained for every unmatched package.
+For the fast pinned SLOOP backend (build-only Pillow dependency):
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install Pillow
+python3 Core/native/prepare.py "$PWD/Research/NativeSloop/upstream-sloop-2.7.1"
+FM1_NATIVE_SLOOP="$PWD/Research/NativeSloop/upstream-sloop-2.7.1" ./scripts/build.sh simulator
+# Use the same environment variable with ./scripts/build.sh device for iPhone.
+```
+
+This native backend does not require the optional private static-kernel captures.
+Other firmware remains interpreted and can exceed the real-time budget.
+
 This addresses the recorded-sequencer CPU bottleneck. The source-native backend
 has GPL-3.0 notices and a different hardware/main-loop model; see
 [docs/native-sloop.md](docs/native-sloop.md) for build pins, save compatibility,
@@ -52,3 +70,9 @@ Choose Panel color for the six manufacturer finishes; the choice persists. The n
 The generic interpreter exceeds the real-time CPU budget for Felucca and SLOOP. Optional build-time specializations substantially reduce that cost while retaining exact interpreter fallback for other code. See `docs/performance-next-step.md` for the architecture and `docs/performance-lab.md` for controlled simulator measurements; simulator timing is not physical iPhone timing.
 
 See `docs/research.md` and `docs/verification.md` for evidence and remaining work. This is a local development prototype, not a Software Factory `ready` receipt or App Store release.
+
+## License and attribution
+
+This project is distributed under GPL-3.0-only; see [LICENSE](LICENSE). The source-native wrapper and state tooling derive from Virtual FM-1, and the pinned SLOOP firmware is GPL-3.0-only. The vendored fm1-emu interpreter retains its MIT license. Individual upstream components retain their original licenses and notices; see [NOTICE](NOTICE), [interpreter provenance](Vendor/UPSTREAM.md) and [native-backend attribution](App/NOTICE-native-sloop).
+
+No firmware binaries, factory sound banks, private saved projects, generated kernels, device builds or signing credentials are included. Public upstream source/resources are fetched by the opt-in native preparation step. Firmware and third-party asset rights remain with their authors. Publishing this source does not establish App Store approval or grant rights to redistribute arbitrary firmware.

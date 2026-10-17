@@ -1,0 +1,16 @@
+FM-1 for iOS — unofficial synthesizer application
+
+Project source is licensed under GPL-3.0-only, except components retaining their
+own licenses. See LICENSE. No affiliation or endorsement by M-VAVE is implied.
+
+fm1-emu: Copyright (c) 2026 Joakim Eriksson, MIT.
+See Vendor/LICENSE-fm1-emu and Vendor/UPSTREAM.md.
+
+Native SLOOP wrapper and state tooling: derived from Virtual FM-1, GPL-3.0.
+SLOOP/Felucca firmware: GPL-3.0-only; exact pins, copyright and component notices
+are retained in App/NOTICE-native-sloop and Core/native/upstream.lock.json.
+External firmware source/assets are not included in this repository; preparation
+fetches the pinned upstream source and retains its original license files.
+
+The illustrated app icon is a generated original asset; its generation prompt
+and reference provenance are recorded in docs/app-icon.md.
