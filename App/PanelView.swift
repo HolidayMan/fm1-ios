@@ -1,18 +1,19 @@
 import SwiftUI
 import UIKit
 
-// Names and pairings follow M-VAVE's FM-1 product color selector.
+// Photo-matched to all six M-VAVE product galleries; see docs/panel-finishes.md.
+// Stable raw names preserve the existing saved finish selection.
 enum PanelFinish: String, CaseIterable, Identifiable {
     case black = "Black", purple = "Purple", orange = "Orange", blackGreen = "Black-Green", coolGray = "Cool Gray", whiteBlue = "White-Blue"
     var id: String { rawValue }
     var palette: PanelPalette {
         switch self {
-        case .black: return PanelPalette(body:0x383a3b, bodyBottom:0x252729, accent:0xb8bec0, control:0x484c50, controlBottom:0x25292c, ink:0xe0e3e4)
-        case .purple: return PanelPalette(body:0xe2b6d4, bodyBottom:0xc294bf, accent:0x9b77cb, control:0x9871bb, controlBottom:0x6f4e96, ink:0x392e46)
-        case .orange: return PanelPalette(body:0xf26c30, bodyBottom:0xd84d22, accent:0xffc497, control:0x494445, controlBottom:0x2b292b, ink:0x2d2422)
-        case .blackGreen: return PanelPalette(body:0x343839, bodyBottom:0x222829, accent:0x6cd1b5, control:0x74c9b1, controlBottom:0x409782, ink:0xddebe7)
-        case .coolGray: return PanelPalette(body:0xd6d0bd, bodyBottom:0xbeb8a8, accent:0xe7e3d7, control:0x999a91, controlBottom:0x74776f, ink:0x363c39)
-        case .whiteBlue: return PanelPalette(body:0xf0f0e9, bodyBottom:0xd6dbd8, accent:0x6e9bcd, control:0x6f91bb, controlBottom:0x466a97, ink:0x34455a)
+        case .black: return PanelPalette(body:0x3b3c3c, bodyBottom:0x343535, accent:0x555757, control:0x303231, controlBottom:0x272928, ink:0xe5e6e3, keybed:0x303231, keybedBottom:0x292b2a, controlInk:0xf0f1eb)
+        case .purple: return PanelPalette(body:0xb88fc9, bodyBottom:0xae82bf, accent:0x9a79ae, control:0x8178b7, controlBottom:0x7168a7, ink:0xf4edf5, keybed:0x7b72af, keybedBottom:0x736aa6, controlInk:0x252835)
+        case .orange: return PanelPalette(body:0xbf704c, bodyBottom:0xb36746, accent:0xa75f43, control:0xa06959, controlBottom:0x915c4f, ink:0xf6eee7, keybed:0x996353, keybedBottom:0x8f5b4c, controlInk:0x282b29)
+        case .blackGreen: return PanelPalette(body:0x3b3c3c, bodyBottom:0x343535, accent:0x555757, control:0x7ccdc4, controlBottom:0x69bbb2, ink:0xe5e6e3, keybed:0x74c8bf, keybedBottom:0x6bbeb5, controlInk:0x203d3c)
+        case .coolGray: return PanelPalette(body:0xdfd8d0, bodyBottom:0xd5cdc3, accent:0xc6beb5, control:0x444c4e, controlBottom:0x363e40, ink:0x252a2b, keybed:0x3c4446, keybedBottom:0x343c3e, controlInk:0x1d2628)
+        case .whiteBlue: return PanelPalette(body:0xeeece4, bodyBottom:0xe3e0d7, accent:0xd2d0c8, control:0x52758e, controlBottom:0x42637c, ink:0x2a343a, keybed:0x4a6c85, keybedBottom:0x42637b, controlInk:0x202f38)
         }
     }
     var swatch: Color { Color(uiColor:UIColor(rgb:palette.body)) }
@@ -20,6 +21,7 @@ enum PanelFinish: String, CaseIterable, Identifiable {
 }
 struct PanelPalette {
     let body:UInt32, bodyBottom:UInt32, accent:UInt32, control:UInt32, controlBottom:UInt32, ink:UInt32
+    let keybed:UInt32, keybedBottom:UInt32, controlInk:UInt32
 }
 private extension UIColor {
     convenience init(rgb:UInt32, alpha:CGFloat=1) {self.init(red:CGFloat((rgb>>16)&255)/255,green:CGFloat((rgb>>8)&255)/255,blue:CGFloat(rgb&255)/255,alpha:alpha)}
@@ -142,7 +144,7 @@ final class HardwarePanel:UIView {
         guard let ctx=UIGraphicsGetCurrentContext(),controls.count>6 else{return}
         let p=finish.palette
         box(bounds.insetBy(dx:0.5,dy:0.5),17,p.body,p.bodyBottom,p.accent)
-        box(keyboardRect,12,0x1b2022,0x111618,0x616b6d)
+        box(keyboardRect,12,p.keybed,p.keybedBottom,0x262a2b)
         let screen=controls[6].rect
         box(screen.insetBy(dx:-4,dy:-4),8,0x161b1e,0x090c0f,0x677374)
         if let image=instrument?.screen {
@@ -165,9 +167,9 @@ final class HardwarePanel:UIView {
             switch c.kind {
             case .master,.encoder:
                 let r=c.rect.insetBy(dx:3,dy:3)
-                box(c.rect,c.rect.width/2,0x161c1f,0x0b1013,p.accent)
-                box(r,r.width/2,p.control,p.controlBottom,p.accent)
-                box(r.insetBy(dx:6,dy:6),r.width/2,p.control,p.controlBottom)
+                box(c.rect,c.rect.width/2,0x171919,0x0e1010,0x575b5a)
+                box(r,r.width/2,0x303332,0x171a19,0x494d4b)
+                box(r.insetBy(dx:6,dy:6),r.width/2,0x292c2b,0x1b1e1d)
                 ctx.saveGState();ctx.translateBy(x:r.midX,y:r.midY)
                 let rotation:CGFloat
                 if case .master=c.kind {rotation=CGFloat((instrument?.volume ?? 0.7)*270-135)*CGFloat.pi/180} else {rotation=angles[i] ?? -0.5}
@@ -176,18 +178,18 @@ final class HardwarePanel:UIView {
             case .key(let id):
                 let down=held.contains(id), intensity=id<led.count ? led[id] : 0
                 if id>=14 {
-                    box(c.rect,9,down ? 0x688f83 : p.control,down ? 0x36574d : p.controlBottom,down ? 0xa3ffd7 : p.accent)
-                    box(CGRect(x:c.rect.midX-2,y:c.rect.minY+10,width:4,height:max(16,c.rect.height*0.4)),2,down ? 0xbaffad : 0xf0f3e8,down ? 0x68db68 : 0xc7d0c7)
+                    box(c.rect,9,down ? 0x688f83 : p.control,down ? 0x36574d : p.controlBottom,down ? 0xa3ffd7 : p.controlBottom)
+                    box(CGRect(x:c.rect.midX-2,y:c.rect.minY+10,width:4,height:max(16,c.rect.height*0.4)),2,down ? 0xbaffad : p.controlInk,down ? 0x68db68 : p.controlInk)
                     // Touch slit follows the finger immediately. This separate small
                     // lamp preserves firmware guide/step/voice brightness and timing.
                     firmwareLight(CGRect(x:c.rect.midX-5,y:c.rect.maxY-6,width:10,height:2),intensity)
                     if let k=blacks.firstIndex(where:{$0.0==id-14}),k<10,c.rect.height>45 {
-                        text(["OP1","OP2","OP3","OP4","OP5","OP6","PIT","GLO","MONO","POLY"][k],CGRect(x:c.rect.minX,y:c.rect.maxY-16,width:c.rect.width,height:12),9,0xf0f2eb)
+                        text(["OP1","OP2","OP3","OP4","OP5","OP6","PIT","GLO","MONO","POLY"][k],CGRect(x:c.rect.minX,y:c.rect.maxY-16,width:c.rect.width,height:12),9,p.controlInk)
                     }
                 } else {
-                    box(c.rect,7,down ? 0x688f83 : p.control,down ? 0x36574d : p.controlBottom,down ? 0xa3ffd7 : p.accent)
+                    box(c.rect,7,down ? 0x688f83 : p.control,down ? 0x36574d : p.controlBottom,down ? 0xa3ffd7 : p.controlBottom)
                     let title=id<2 ? c.name : labels[id-2]
-                    text(title,CGRect(x:c.rect.minX+1,y:c.rect.midY-(title.contains("\n") ? 12 : 6),width:c.rect.width-2,height:28),id<2 ? 12 : 11,0xf6f7f1,.semibold)
+                    text(title,CGRect(x:c.rect.minX+1,y:c.rect.midY-(title.contains("\n") ? 12 : 6),width:c.rect.width-2,height:28),id<2 ? 12 : 11,p.controlInk,.semibold)
                     firmwareLight(CGRect(x:c.rect.midX-7,y:c.rect.minY+3,width:14,height:2),intensity)
                 }
             case .screen:break
