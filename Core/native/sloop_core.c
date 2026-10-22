@@ -841,6 +841,24 @@ uint32_t FEL(file_sample_write)(uint32_t slot,const uint8_t *bytes,uint32_t size
     memcpy(host_flash+SMP_USER_OFF(slot),bytes,SMP_USER_SIZE);
     smp_user_scan(slot);return 0;
 }
+/* Same operation as the official editor's smpUseOn: select Track 1..3,
+ * choose SAMPLE's first preset, then SET = the validated user slot. The caller
+ * commits this disposable candidate only after import+assignment both succeed. */
+uint32_t FEL(file_sample_assign)(uint32_t track,uint32_t slot) {
+    if(track>=NPART||slot>=SMP_USER_SLOTS)return 1;
+    if(song.playing||transport_req||!audio_quiet())return 3;
+    if(!usr_nz[slot])return 2;
+    uint32_t engine=0;
+    while(engine<NENGINES&&!str_eq(ENGINES[engine]->name,"SAMPLE"))engine++;
+    if(engine>=NENGINES)return 2;
+    set_engine_of(&trk[track],engine);
+    apply_preset_to(&trk[track],0);
+    trk[track].p[P_E0]=(int16_t)(SMP_NSETS+slot);
+    song.sel=(uint8_t)track;
+    ui.force=1;
+    return 0;
+}
+
 uint32_t FEL(file_arrangement_write)(const uint8_t *bytes,uint32_t size) {
     if(!bytes||size<11||bytes[10]<1||bytes[10]>ARR_STEPS||size!=11+2u*bytes[10]||bytes[3]>1||bytes[9]>1||bytes[8]>15||bytes[0]>4)return 1;
     if(song.playing||transport_req||srec)return 3;

@@ -66,6 +66,15 @@ struct FirmwareLibraryView: View {
         UIResponsivenessProbe.shared.measure("FirmwareLibrary.description") {
         NavigationStack {
             List {
+                if busy {
+                    Section {
+                        HStack(spacing:12) {
+                            ProgressView()
+                            Text("Finishing the current instrument action…")
+                                .font(.callout).foregroundStyle(.secondary)
+                        }.accessibilityIdentifier("Instrument selection pending")
+                    }
+                }
                 if installed.isEmpty && query.isEmpty {
                     Section {
                         Text("Choose a release below to download before playing. The download size is shown for each release.")
@@ -75,7 +84,10 @@ struct FirmwareLibraryView: View {
                 if !installed.isEmpty {
                     Section("On this device") {
                         ForEach(installed.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }) { fw in
-                            Button {instrument.load(fw);dismiss()} label: {
+                            Button {
+                                if instrument.load(fw) {dismiss()}
+                                else {error="The instrument is finishing another action. Wait a moment, then choose the release again."}
+                            } label: {
                                 HStack {Text(fw.name).foregroundStyle(.primary);Spacer();Image(systemName:selectedID == fw.id ? "checkmark.circle.fill" : "play.circle")}
                             }.accessibilityIdentifier("Installed firmware \(fw.id)")
                         }
@@ -114,7 +126,7 @@ struct FirmwareLibraryView: View {
             .navigationTitle("Firmware library")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {Button(downloading == nil ? "Done" : "Cancel") {downloadTask?.cancel();dismiss()}}
-            .alert("Download unavailable",isPresented:Binding(get:{error != nil},set:{if !$0 {error=nil}})) {Button("OK"){error=nil}} message:{Text(error ?? "")}
+            .alert("Instrument unavailable",isPresented:Binding(get:{error != nil},set:{if !$0 {error=nil}})) {Button("OK"){error=nil}} message:{Text(error ?? "")}
         }
         .tint(theme.accent)
         .onAppear {instrument.refresh()}

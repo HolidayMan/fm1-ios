@@ -113,6 +113,47 @@ final class ProjectFilesFlowUITests:XCTestCase {
             XCTAssertEqual(XCTWaiter.wait(for:[expected],timeout:10),.completed)
         }
     }
+    func testBackupRestoreDeleteAndUndoKeepInstrumentPlayable()throws {
+        let app=try launch()
+        element("Projects and files",in:app).tap()
+        let backups=app.buttons.matching(NSPredicate(format:"label BEGINSWITH %@","Recovery & backups (")).firstMatch
+        reveal(backups,in:app);backups.tap()
+        let save=element("Export backup",in:app)
+        reveal(save,in:app);save.tap()
+        let review=app.navigationBars["Review export"]
+        XCTAssertTrue(review.waitForExistence(timeout:30))
+        XCTAssertTrue(element("Save prepared file",in:app).exists)
+        XCTAssertTrue(element("Share prepared file",in:app).exists)
+        review.buttons["Done"].tap()
+        let menu=element("Actions for SLOOP workspace backup",in:app)
+        reveal(menu,in:app);menu.tap()
+        element("Restore…",in:app).tap()
+        let restore=app.alerts["Restore this SLOOP backup?"]
+        XCTAssertTrue(restore.waitForExistence(timeout:5))
+        restore.buttons["Cancel"].tap()
+        XCTAssertTrue(menu.exists,"Cancelling restore keeps the backup")
+        menu.tap();element("Restore…",in:app).tap()
+        app.alerts["Restore this SLOOP backup?"].buttons["Back up and restore"].tap()
+        XCTAssertTrue(app.staticTexts["Workspace restored. A recovery backup was saved first."].waitForExistence(timeout:30))
+        reveal(menu,in:app);menu.tap();element("Delete backup…",in:app).tap()
+        let deletion=app.alerts["Delete this backup?"]
+        XCTAssertTrue(deletion.waitForExistence(timeout:5))
+        deletion.buttons["Cancel"].tap()
+        XCTAssertTrue(menu.exists,"Cancelling deletion keeps the backup")
+        let countBefore=backups.label
+        menu.tap();element("Delete backup…",in:app).tap()
+        app.alerts["Delete this backup?"].buttons["Delete backup"].tap()
+        let undo=element("Undo backup deletion",in:app)
+        XCTAssertTrue(undo.waitForExistence(timeout:15))
+        XCTAssertNotEqual(backups.label,countBefore,"Deleting removes one backup, even when other backups have the same display name")
+        reveal(undo,in:app);undo.tap()
+        XCTAssertTrue(menu.waitForExistence(timeout:15))
+        XCTAssertEqual(backups.label,countBefore,"Undo restores the original backup count")
+        capture("Backups · restored and deletion undone")
+        app.navigationBars["Projects and files"].buttons["Done"].tap()
+        XCTAssertTrue(app.staticTexts["Playing"].waitForExistence(timeout:15))
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+    }
     func testCaptureAllSixFinishFileSections()throws {
         guard ProcessInfo.processInfo.environment["FM1_CAPTURE_PROJECT_FINISHES"] == "1" else {
             throw XCTSkip("Opt-in six-finish captures; functional file flow runs separately")

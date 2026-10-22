@@ -78,6 +78,8 @@ private struct FM1PreparedFile:Identifiable {
     @State private var reviewingImport=false
     @State private var restoreItem:ProjectFileItem?
     @State private var confirmingRestore=false
+    @State private var deleteItem:ProjectFileItem?
+    @State private var confirmingDelete=false
     @State private var prepared:FM1PreparedFile?
     @State private var preparing=false
     @State private var reviewingExport=false
@@ -89,6 +91,7 @@ private struct FM1PreparedFile:Identifiable {
     @State private var sampleSource:SampleAudioSource?
     @State private var sampleWaveform:[Float]=[]
     @State private var editingSample=false
+    @State private var auditionResumeWanted:Bool?
     @State private var renderMode:PerformanceExport.Mode = .loop
     @State private var renderDuration:Double=15
     @State private var renderTail:Double=2
@@ -127,6 +130,12 @@ private struct FM1PreparedFile:Identifiable {
                                 .accessibilityIdentifier("File action status")
                                 .accessibilityAddTraits(.updatesFrequently)
                         }
+                        if let deleted=store.recentlyDeletedBackup {
+                            Button("Undo deletion of \(deleted.name)") {
+                                Task {await store.restoreDeletedBackup()}
+                            }.frame(minHeight:44).disabled(occupied)
+                                .accessibilityIdentifier("Undo backup deletion")
+                        }
                     }.padding(.horizontal,16).padding(.vertical,8).frame(maxWidth:960,alignment:.leading).frame(maxWidth:.infinity)
                 }
             }
@@ -152,20 +161,33 @@ private struct FM1PreparedFile:Identifiable {
             } message:{Text(restoreItem?.kind == .backup
                 ? "Replaces SLOOP’s current work, sounds and instrument settings. A recovery backup is saved first. Your saved copies stay unchanged."
                 : "Replaces the current loop, sections, song and shared sounds. Instrument settings stay as they are. A recovery backup of your current work is saved first.")}
+            .alert("Delete this backup?",isPresented:$confirmingDelete) {
+                Button("Delete backup",role:.destructive) {
+                    if let item=deleteItem {Task {await store.deleteBackup(item)}}
+                    deleteItem=nil
+                }
+                Button("Cancel",role:.cancel){deleteItem=nil}
+            } message:{Text("Removes “\(deleteItem?.name ?? "")” from the backup list. Your current music and saved copies stay unchanged. You can undo the deletion.")}
             .fileImporter(isPresented:$importing,allowedContentTypes:[.fm1Project,.fm1Backup],allowsMultipleSelection:false, onCompletion:inspectImport)
             .sheet(isPresented:$reviewingImport,onDismiss:{
                 if let preview=importPreview {store.discardStagedImport(preview.stagedURL)}
                 importPreview=nil
             }){importReview}
             .sheet(isPresented:$reviewingExport){exportReview}
-            .sheet(isPresented:$editingSample) {
+            .sheet(isPresented:$editingSample,onDismiss:{
+                if let wanted=auditionResumeWanted {
+                    auditionResumeWanted=nil
+                    instrument.endSampleAudition(resume:wanted)
+                }
+                sampleSource=nil;sampleWaveform=[]
+            }) {
                 if let source=sampleSource {
-                    FM1SampleTrimView(source:source,waveform:sampleWaveform,finish:finish) {data,slot,name in
-                        try await store.importSample(slotData:data,slot:slot,name:name)
+                    FM1SampleTrimView(source:source,waveform:sampleWaveform,finish:finish) {data,slot,name,targetTrack in
+                        try await store.importSample(slotData:data,slot:slot,name:name,targetTrack:targetTrack)
                     }
                 }
             }
-            .fileImporter(isPresented:$choosingSample,allowedContentTypes:[.wav],allowsMultipleSelection:false,onCompletion:loadSample)
+            .fileImporter(isPresented:$choosingSample,allowedContentTypes:[.audio],allowsMultipleSelection:false,onCompletion:loadSample)
         }
     }
     @ViewBuilder private func projectsContent(wide:Bool)->some View {
@@ -241,6 +263,12 @@ private struct FM1PreparedFile:Identifiable {
                     restoreItem=item;confirmingRestore=true
                 }.disabled(!store.capabilities.canOpenProject)
                 Button("Export…",systemImage:"square.and.arrow.up"){prepare({try await store.exportFile(item)},kind:item.kind)}
+                if item.kind == .backup {
+                    Divider()
+                    Button("Delete backup…",systemImage:"trash",role:.destructive) {
+                        deleteItem=item;confirmingDelete=true
+                    }
+                }
             } label:{Image(systemName:"ellipsis").frame(width:44,height:44)}
                 .accessibilityLabel("Actions for \(item.name)").disabled(occupied)
         }.padding(.vertical,4)
@@ -249,17 +277,19 @@ private struct FM1PreparedFile:Identifiable {
         VStack(alignment:.leading,spacing:12) {
             Text("Add a sound to SLOOP").font(.headline)
             if store.capabilities.canImportSamples {
-                Text("Choose a WAV, preview and trim it, then choose USR1–USR4. Replaces one shared sound slot; a recovery backup is saved first.")
+                Text("Choose a recording, trim the sound on its waveform and listen before adding it. Choose a USR slot and the synth track that will play it.")
                     .font(.callout).foregroundStyle(.secondary)
-                action("Choose WAV…",symbol:"waveform.badge.plus",id:"Import sample"){choosingSample=true}.disabled(occupied)
-                Text("Up to about 7.38 seconds per slot. Converted to mono, 22.05 kHz.")
+                action("Choose audio…",symbol:"waveform.badge.plus",id:"Import sample"){choosingSample=true}.disabled(occupied)
+                Text("WAV, AIFF, M4A or MP3 · up to 2 minutes and 32 MB.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("Up to about 7.38 seconds per slot · mono, 22.05 kHz. A recovery backup is saved before replacing a sound.")
                     .font(.caption).foregroundStyle(.secondary)
                 DisclosureGroup("How to play your sample") {
-                    Text("On a synth track, select SAMPLE and set SET to the USR slot you chose. In GRAIN, choose the slot under SRC. This imports one sound, not a multi-sample drum kit.")
+                    Text("Choose Track 1, 2 or 3 when adding the sound. That track switches to SAMPLE and the chosen USR slot, ready for the keyboard. Choose Slot only to keep all track sounds unchanged; then select SAMPLE → SET → USR1–USR4 manually, or use GRAIN → SRC. A slot is shared by every loop and section using it. This importer adds one sound per slot.")
                         .font(.callout).foregroundStyle(.secondary).padding(.top,6)
                 }.font(.callout)
             } else {
-                Text("WAV sample import is available with SLOOP 2.8. Close this window and choose SLOOP from the instrument menu.")
+                Text("Sample import is available with SLOOP 2.8. Close this window and choose SLOOP from the instrument menu.")
                     .font(.callout).foregroundStyle(.secondary)
             }
         }.frame(maxWidth:640,alignment:.leading)
@@ -278,6 +308,7 @@ private struct FM1PreparedFile:Identifiable {
                         let source=try SampleAudioImporter.load(url)
                         return (source,source.waveform)
                     }.value
+                    auditionResumeWanted=await instrument.beginSampleAudition()
                     sampleSource=loaded.0;sampleWaveform=loaded.1;editingSample=true
                 } catch {errorText=error.localizedDescription}
             }
@@ -447,151 +478,4 @@ private struct FM1FileShare:UIViewControllerRepresentable {
         return controller
     }
     func updateUIViewController(_ controller:UIActivityViewController,context:Context){}
-}
-
-@MainActor private final class FM1SampleAudition:NSObject,ObservableObject,AVAudioPlayerDelegate {
-    @Published private(set) var playing=false
-    private var player:AVAudioPlayer?
-    func play(_ data:Data)throws {
-        stop()
-        let audio=try AVAudioPlayer(data:data)
-        audio.delegate=self;audio.prepareToPlay()
-        guard audio.play() else {throw NSError(domain:"FM1Sample",code:1,userInfo:[NSLocalizedDescriptionKey:"The selected region couldn’t be previewed."])}
-        player=audio;playing=true
-    }
-    func stop(){player?.stop();player=nil;playing=false}
-    nonisolated func audioPlayerDidFinishPlaying(_ player:AVAudioPlayer,successfully flag:Bool){Task{@MainActor in self.stop()}}
-}
-@MainActor private struct FM1SampleTrimView:View {
-    let source:SampleAudioSource
-    let waveform:[Float]
-    let finish:PanelFinish
-    let apply:(Data,Int,String)async throws->Void
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var audition=FM1SampleAudition()
-    @State private var start:Double=0
-    @State private var end:Double=0
-    @State private var slot=0
-    @State private var normalize=false
-    @State private var busy=false
-    @State private var confirming=false
-    @State private var errorText:String?
-    private var theme:FM1SurfaceTheme {FM1SurfaceTheme(finish:finish)}
-    private var duration:Double {max(1.0/22050,source.duration)}
-    private var encodedBytes:Int {SampleAudioImporter.encodedByteCount(duration:max(0,end-start))}
-    private var fits:Bool {end>start && encodedBytes<=81920}
-    var body:some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment:.leading,spacing:18) {
-                    Text(source.name).font(.title3.weight(.semibold)).fixedSize(horizontal:false,vertical:true)
-                    FM1SampleWaveform(values:waveform,start:start/duration,end:end/duration)
-                        .foregroundStyle(theme.accent).frame(height:110)
-                        .accessibilityLabel("Sample waveform. Selected region \(start.formatted(.number.precision(.fractionLength(2)))) to \(end.formatted(.number.precision(.fractionLength(2)))) seconds.")
-                    Button {preview()} label:{
-                        Label(audition.playing ? "Stop preview" : "Audition selected region",systemImage:audition.playing ? "stop.fill" : "play.fill")
-                            .frame(minHeight:44).frame(maxWidth:.infinity).padding(.horizontal,14)
-                            .fm1Glass(finish:finish,cornerRadius:14,interactive:true)
-                    }.buttonStyle(.plain).disabled(busy || end<=start).accessibilityIdentifier("Audition sample")
-                    VStack(alignment:.leading,spacing:4) {
-                        HStack {
-                            Text("Start").font(.callout)
-                            Spacer()
-                            TextField("Start time",value:Binding(get:{start},set:{setStart($0)}),format:.number.precision(.fractionLength(2)))
-                                .keyboardType(.decimalPad).textFieldStyle(.roundedBorder).frame(width:100).frame(minHeight:44)
-                            Text("s").foregroundStyle(.secondary)
-                        }
-                        Slider(value:Binding(get:{start},set:{setStart($0)}),in:0...duration).frame(minHeight:44).accessibilityLabel("Sample start")
-                        HStack {
-                            Text("End").font(.callout)
-                            Spacer()
-                            TextField("End time",value:Binding(get:{end},set:{setEnd($0)}),format:.number.precision(.fractionLength(2)))
-                                .keyboardType(.decimalPad).textFieldStyle(.roundedBorder).frame(width:100).frame(minHeight:44)
-                            Text("s").foregroundStyle(.secondary)
-                        }
-                        Slider(value:Binding(get:{end},set:{setEnd($0)}),in:0...duration).frame(minHeight:44).accessibilityLabel("Sample end")
-                    }
-                    Text("\(Double(encodedBytes)/1024,specifier:"%.1f") KiB / 80 KiB after encoding")
-                        .font(.callout.monospacedDigit()).foregroundStyle(fits ? Color.secondary : Color.orange)
-                        .accessibilityIdentifier("Encoded sample capacity")
-                    if !fits {Text("Trim a shorter region to fit the destination slot.").font(.callout).foregroundStyle(.orange)}
-                    Toggle("Normalize selected region",isOn:$normalize).frame(minHeight:44)
-                    Text("Converted to 22.05 kHz, mono, FSMP. Normalization applies when adding the sample. The original WAV file is not changed.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Picker("Destination",selection:$slot) {ForEach(0..<4){Text("USR\($0+1)").tag($0)}}
-                        .pickerStyle(.segmented).frame(minHeight:44).accessibilityIdentifier("Sample destination")
-                    Text("Replaces this shared slot in the current SLOOP workspace. Tracks and sections using it will play the new sound. Named saved copies keep their original samples.")
-                        .font(.callout).foregroundStyle(.secondary)
-                    Text("To play it: SAMPLE → SET → USR slot, or GRAIN → SRC → USR slot.").font(.caption).foregroundStyle(.secondary)
-                    Button {audition.stop();confirming=true} label:{
-                        if busy {ProgressView().frame(minHeight:44).frame(maxWidth:.infinity)}
-                        else {Label("Add to USR\(slot+1)…",systemImage:"square.and.arrow.down").frame(minHeight:44).frame(maxWidth:.infinity)}
-                    }.buttonStyle(.borderedProminent).disabled(!fits || busy).accessibilityIdentifier("Apply sample")
-                }.padding(20).frame(maxWidth:720).frame(maxWidth:.infinity)
-            }.background(theme.background).tint(theme.accent)
-                .navigationTitle("Trim sample").navigationBarTitleDisplayMode(.inline)
-                .toolbar {Button("Cancel"){audition.stop();dismiss()}.disabled(busy)}
-                .interactiveDismissDisabled(busy)
-                .task {end=duration}
-                .onDisappear {audition.stop()}
-                .onChange(of:scenePhase){_,phase in if phase != .active {audition.stop()}}
-                .confirmationDialog("Replace the sound in USR\(slot+1)?",isPresented:$confirming,titleVisibility:.visible) {
-                    Button("Back up and replace",role:.destructive){commit()}
-                    Button("Cancel",role:.cancel){}
-                } message:{Text("Tracks and sections using this slot will play the new sound. A recovery backup is saved first; named saved copies stay unchanged.")}
-                .alert("Sample action failed",isPresented:Binding(get:{errorText != nil},set:{if !$0 {errorText=nil}})) {Button("OK",role:.cancel){}} message:{Text(errorText ?? "")}
-        }
-    }
-    private func setStart(_ value:Double){audition.stop();start=max(0,min(value,end-1.0/22050))}
-    private func setEnd(_ value:Double){audition.stop();end=min(duration,max(value,start+1.0/22050))}
-    private func preview() {
-        if audition.playing {audition.stop();return}
-        let begin=start,finish=end,source=source
-        busy=true
-        Task {
-            defer {busy=false}
-            do {
-                let data=try await Task.detached(priority:.userInitiated){try SampleAudioImporter.previewWAV(source:source,start:begin,end:finish)}.value
-                try audition.play(data)
-            } catch {errorText=error.localizedDescription}
-        }
-    }
-    private func commit() {
-        let begin=start,finish=end,source=source,normalize=normalize,destination=slot
-        busy=true
-        Task {
-            defer {busy=false}
-            do {
-                let data=try await Task.detached(priority:.userInitiated){try SampleAudioImporter.encode(source:source,start:begin,end:finish,normalize:normalize)}.value
-                try await apply(data,destination,source.name)
-                dismiss()
-            } catch {errorText=error.localizedDescription}
-        }
-    }
-}
-private struct FM1SampleWaveform:View {
-    let values:[Float]
-    let start:Double,end:Double
-    var body:some View {
-        GeometryReader {geometry in
-            ZStack(alignment:.leading) {
-                Canvas {context,size in
-                    guard !values.isEmpty else{return}
-                    var bars=Path()
-                    for (index,value) in values.enumerated() {
-                        let x=CGFloat(index)*size.width/CGFloat(values.count)
-                        let amplitude=CGFloat(min(1,max(0,abs(value))))*size.height/2
-                        bars.move(to:CGPoint(x:x,y:size.height/2-amplitude))
-                        bars.addLine(to:CGPoint(x:x,y:size.height/2+amplitude))
-                    }
-                    context.stroke(bars,with:.foreground,lineWidth:2)
-                }
-                Color.primary.opacity(0.07).frame(width:geometry.size.width*start)
-                Color.primary.opacity(0.07).frame(width:geometry.size.width*(1-end)).frame(maxWidth:.infinity,alignment:.trailing)
-                Rectangle().frame(width:2).offset(x:geometry.size.width*start)
-                Rectangle().frame(width:2).offset(x:geometry.size.width*end)
-            }
-        }.accessibilityElement(children:.ignore)
-    }
 }

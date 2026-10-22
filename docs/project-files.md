@@ -51,14 +51,27 @@ the audio callback continues to read only the existing sample ring.
 ## Samples and audio
 
 Sample import replaces one zero-based bridge slot, shown as USR1–USR4. The Swift
-converter decodes and trims WAV, creates mono 22.05 kHz IMA ADPCM and a complete
+converter decodes WAV, AIFF, M4A and MP3 through the platform audio decoder,
+trims a selected region, and creates mono 22.05 kHz IMA ADPCM and a complete
 81,920-byte FSMP slot. The bridge validates header, zones and data CRC before any
 slot write, and reads back every byte. Applying a sample uses the latest current
-workspace, changes only that slot and saves a full pre-replacement recovery copy.
+workspace, replaces that slot, optionally assigns the chosen track sound, and
+saves a full pre-replacement recovery copy. Other tracks and slots are retained.
 The payload is at most 81,408 bytes (about 7.38 seconds at 22.05 kHz).
-To play an imported instrument on the panel, select the SAMPLE engine on a synth
-track and choose SET = USR1–USR4; GRAIN also offers these slots as SRC. This first
-importer creates one instrument zone, not the upstream multi-file drum-kit builder.
+The import sheet defaults to assigning Track 1 to SAMPLE with the selected USR
+slot; Track 2, Track 3 and Slot only are also available. Assignment and sample
+replacement are validated and committed together on the disposable candidate.
+C4 plays the original pitch. With Slot only, choose SAMPLE → SET → USR1–USR4
+manually; GRAIN also offers these slots as SRC. The importer creates one
+instrument zone, not the upstream multi-file drum-kit or automatic chop builder.
+
+The waveform combines both trim handles and a preview playhead. A long recording
+can be shown in full to move the selection, then zoomed to trim it. Precise times
+are optional. Inputs are limited to 32 MB and 120 seconds; the selected region
+must fit the slot after encoding. Preview plays the encoded and decoded ADPCM
+result, including normalization. The live synth is temporarily suspended while
+the sample editor is open; dismissal restores playback only if current user and
+scene policy permit it. Explicit manual pause is retained.
 
 Offline WAV export receives a fresh complete working snapshot and package bytes,
 then owns an independent native instance on its own serial queue. It renders a
@@ -118,3 +131,22 @@ logical objects, A–D, settings and four sample regions; old fixture is untouch
 Upstream 2.8 UI suite includes new NOTES/drum editing and 20,000-frame fuzz.
 Simulator validation and TestFlight distribution receipt:
 `Research/Sloop25/verification.json`. Physical phone acceptance is separate.
+
+## Backup deletion and startup recovery
+
+Only complete workspace backups offer Delete backup. Confirmation moves the
+owned file into the library's private deleted-backup area. Undo is available
+after restarting the app and restores the original identity and bytes; it
+refuses to replace an existing file or symbolic link. Deletion does not change
+the running workspace or named project copies.
+
+Native selection publishes its initial LCD frame together with the selected
+engine, including when playback is paused. Audio start is acknowledged by
+actual callback progress. A stalled graph gets one bounded rebuild, followed by
+an actionable error if it remains stalled. A new selection, manual pause,
+background transition or engine replacement invalidates the old receipt.
+Firmware selection stays open if an in-progress transaction prevents loading.
+
+These file formats belong to PocketFM. They are not the official web editor's
+JSON backup or `.sloopsong` format. MIDI import/export, multi-zone sample kits
+and automatic slicing are not implemented.

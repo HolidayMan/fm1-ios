@@ -7,11 +7,12 @@ struct SampleAudioSource:Sendable {
     let sourceRate:Double
     let sourceChannels:Int
     var duration:Double {Double(samples.count)/22050}
-    var waveform:[Float] {
-        guard !samples.isEmpty else{return []}
-        let stride=max(1,(samples.count+255)/256)
-        return Swift.stride(from:0,to:samples.count,by:stride).map {offset in
-            samples[offset..<min(offset+stride,samples.count)].reduce(Float(0)){max($0,abs($1))}
+    var waveform:[Float] {waveform(in:0..<samples.count)}
+    func waveform(in range:Range<Int>)->[Float] {
+        guard !range.isEmpty else{return []}
+        let stride=max(1,(range.count+511)/512)
+        return Swift.stride(from:range.lowerBound,to:range.upperBound,by:stride).map {offset in
+            samples[offset..<min(offset+stride,range.upperBound)].reduce(Float(0)){max($0,abs($1))}
         }
     }
 }
@@ -29,21 +30,17 @@ enum SampleAudioImporter {
         let access=url.startAccessingSecurityScopedResource()
         defer {if access {url.stopAccessingSecurityScopedResource()}}
         let bytes=try url.resourceValues(forKeys:[.fileSizeKey]).fileSize ?? 0
-        guard bytes>0,bytes<=32*1024*1024 else {throw failure("Choose a WAV file no larger than 32 MB.")}
-        let handle=try FileHandle(forReadingFrom:url)
-        defer {try? handle.close()}
-        let header=try handle.read(upToCount:12) ?? Data()
-        guard header.count==12,header.prefix(4)==Data("RIFF".utf8),header.suffix(4)==Data("WAVE".utf8) else {
-            throw failure("Choose a valid WAV audio file.")
-        }
-        let file=try AVAudioFile(forReading:url,commonFormat:.pcmFormatFloat32,interleaved:false)
+        guard bytes>0,bytes<=32*1024*1024 else {throw failure("Choose an audio file no larger than 32 MB.")}
+        let file:AVAudioFile
+        do {file=try AVAudioFile(forReading:url,commonFormat:.pcmFormatFloat32,interleaved:false)}
+        catch {throw failure("This audio file could not be decoded. Choose WAV, AIFF, M4A or MP3 audio supported by this device.")}
         let inputFormat=file.processingFormat,rate=inputFormat.sampleRate,channels=Int(inputFormat.channelCount)
         guard rate.isFinite,(8000...192000).contains(rate),(1...2).contains(channels),file.length>0,
-              Double(file.length)/rate<=120 else {throw failure("Use mono or stereo WAV audio, 8–192 kHz, up to two minutes long.")}
+              Double(file.length)/rate<=120 else {throw failure("Use mono or stereo audio, 8–192 kHz, up to two minutes long.")}
         guard let outputFormat=AVAudioFormat(commonFormat:.pcmFormatFloat32,sampleRate:22050,channels:1,interleaved:false),
               let converter=AVAudioConverter(from:inputFormat,to:outputFormat),
               let input=AVAudioPCMBuffer(pcmFormat:inputFormat,frameCapacity:8192),
-              let output=AVAudioPCMBuffer(pcmFormat:outputFormat,frameCapacity:8192) else {throw failure("This WAV format cannot be converted.")}
+              let output=AVAudioPCMBuffer(pcmFormat:outputFormat,frameCapacity:8192) else {throw failure("This audio format cannot be converted.")}
         converter.sampleRateConverterQuality=AVAudioQuality.max.rawValue
         converter.downmix=true
         var result=[Float](),readError:Error?
@@ -61,31 +58,40 @@ enum SampleAudioImporter {
             }
             if let readError {throw readError}
             if let conversionError {throw conversionError}
-            guard status != .error else {throw failure("The WAV audio could not be decoded.")}
+            guard status != .error else {throw failure("The audio could not be decoded.")}
             if let channel=output.floatChannelData?[0],output.frameLength>0 {
                 for index in 0..<Int(output.frameLength) {
                     let value=channel[index]
-                    guard value.isFinite else {throw failure("The WAV contains invalid audio samples.")}
+                    guard value.isFinite else {throw failure("The audio contains invalid audio samples.")}
                     result.append(max(-1,min(1,value)))
                 }
             }
-            guard result.count<=22050*120+8192 else {throw failure("The decoded WAV is too long.")}
+            guard result.count<=22050*120+8192 else {throw failure("The decoded audio is too long.")}
             finished = status == .endOfStream
-            if status == .inputRanDry && output.frameLength==0 {throw failure("The WAV audio is incomplete.")}
+            if status == .inputRanDry && output.frameLength==0 {throw failure("The audio is incomplete.")}
         }
-        guard !result.isEmpty else {throw failure("The WAV contains no audio.")}
+        guard !result.isEmpty else {throw failure("The audio contains no audio.")}
         return SampleAudioSource(name:url.deletingPathExtension().lastPathComponent,samples:result,sourceRate:rate,sourceChannels:channels)
     }
 
     private static func region(_ source:SampleAudioSource,start:Double,end:Double)throws->ArraySlice<Float> {
         guard start.isFinite,end.isFinite,start>=0,end>start,end<=source.duration+0.00001 else {throw failure("Choose a valid start and end within the sound.")}
-        let first=Int((start*22050).rounded(.down)),last=min(source.samples.count,Int((end*22050).rounded(.up)))
+        let first=frameBoundary(start,rounding:.down),last=min(source.samples.count,frameBoundary(end,rounding:.up))
         guard first>=0,last>first,last<=source.samples.count else {throw failure("Select a longer audio region.")}
         return source.samples[first..<last]
     }
+    // Snap exact frame boundaries after floating-point seconds conversion.
+    private static func frameBoundary(_ seconds:Double,rounding:FloatingPointRoundingRule)->Int {
+        let frames=seconds*Double(sampleRate),nearest=frames.rounded()
+        return Int((abs(frames-nearest)<0.000001 ? nearest : frames).rounded(rounding))
+    }
+    static func encodedByteCount(frameCount:Int)->Int {
+        guard frameCount>=0,frameCount<=sampleRate*120 else{return Int.max}
+        return dataOffset+(frameCount+1)/2
+    }
     static func encodedByteCount(duration:Double)->Int {
         guard duration.isFinite,duration>=0,duration<=120 else{return Int.max}
-        return dataOffset+(Int(ceil(duration*22050))+1)/2
+        return encodedByteCount(frameCount:frameBoundary(duration,rounding:.up))
     }
 
     /// FSMP v1, one zone, mono 22.05 kHz, low-nibble-first IMA ADPCM.
@@ -123,15 +129,24 @@ enum SampleAudioImporter {
         slot.replaceSubrange(dataOffset..<dataOffset+encoded.count,with:encoded)
         return slot
     }
-    static func previewWAV(source:SampleAudioSource,start:Double,end:Double)throws->Data {
-        let selected=try region(source,start:start,end:end)
-        var pcm=Data(capacity:selected.count*2)
-        for value in selected {
-            guard value.isFinite else {throw failure("The sound contains invalid samples.")}
-            let sample=Int16(max(-32768,min(32767,Int((Double(value)*32768).rounded(.towardZero)))))
-            let bits=UInt16(bitPattern:sample);pcm.append(UInt8(bits&255));pcm.append(UInt8(bits>>8))
+    /// Audition the same ADPCM and normalization that will be installed in USR.
+    static func previewWAV(source:SampleAudioSource,start:Double,end:Double,normalize:Bool=false)throws->Data {
+        let slot=try encode(source:source,start:start,end:end,normalize:normalize)
+        let count=(0..<4).reduce(0){$0 | Int(slot[36+$1]) << ($1*8)}
+        var pcm=Data(capacity:count*2),predictor=0,index=0
+        for offset in 0..<count {
+            let code=Int(slot[dataOffset+offset/2] >> (offset&1 == 0 ? 0 : 4))&15
+            let step=steps[index]
+            var delta=step>>3
+            if code&4 != 0 {delta+=step}
+            if code&2 != 0 {delta+=step>>1}
+            if code&1 != 0 {delta+=step>>2}
+            predictor=max(-32768,min(32767,predictor+(code&8 != 0 ? -delta : delta)))
+            index=max(0,min(88,index+adjustments[code&7]))
+            let bits=UInt16(bitPattern:Int16(predictor))
+            pcm.append(UInt8(bits&255));pcm.append(UInt8(bits>>8))
         }
-        return PCMFile.wav(pcm:pcm,sampleRate:22050,channels:1)
+        return PCMFile.wav(pcm:pcm,sampleRate:sampleRate,channels:1)
     }
     static func crc32(_ data:Data)->UInt32 {
         var result=UInt32.max
@@ -156,4 +171,33 @@ enum PCMFile {
         SampleAudioImporter.put16(16,at:34,in:&header);SampleAudioImporter.put32(UInt32(pcm.count),at:40,in:&header)
         header.append(pcm);return header
     }
+}
+
+/// Integer frame bounds keep the waveform, displayed capacity and encoded region identical.
+struct SampleTrimSelection:Equatable,Sendable {
+    let frameCount:Int
+    private(set) var first:Int=0
+    private(set) var last:Int
+    init(frameCount:Int) {
+        self.frameCount=max(1,frameCount)
+        last=min(max(1,frameCount),SampleAudioImporter.maximumFrames)
+    }
+    var start:Double {Double(first)/Double(SampleAudioImporter.sampleRate)}
+    var end:Double {Double(last)/Double(SampleAudioImporter.sampleRate)}
+    var count:Int {last-first}
+    var encodedBytes:Int {SampleAudioImporter.encodedByteCount(frameCount:count)}
+    var fits:Bool {count<=SampleAudioImporter.maximumFrames}
+    mutating func setStart(fraction:Double) {
+        guard fraction.isFinite else{return}
+        first=max(0,min(last-1,Int((max(0,min(1,fraction))*Double(frameCount)).rounded())))
+    }
+    mutating func setEnd(fraction:Double) {
+        guard fraction.isFinite else{return}
+        last=min(frameCount,max(first+1,Int((max(0,min(1,fraction))*Double(frameCount)).rounded())))
+    }
+    mutating func move(first proposed:Int) {
+        let length=count
+        first=max(0,min(frameCount-length,proposed));last=first+length
+    }
+    mutating func fit() {last=min(frameCount,first+SampleAudioImporter.maximumFrames)}
 }

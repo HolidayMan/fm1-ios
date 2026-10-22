@@ -157,7 +157,9 @@ struct ProjectFileEnvelope:Codable,Sendable {
         return data
     }
     static func read(_ url:URL)throws->Self {
-        let size=try url.resourceValues(forKeys:[.fileSizeKey]).fileSize ?? 0
+        let values=try url.resourceValues(forKeys:[.fileSizeKey,.isRegularFileKey,.isSymbolicLinkKey])
+        guard url.isFileURL,values.isRegularFile == true,values.isSymbolicLink != true else {throw ProjectFilesError("Choose a regular project or backup file, not a link or folder.")}
+        let size=values.fileSize ?? 0
         guard (1...4*1024*1024).contains(size) else {throw ProjectFilesError("This project file has an invalid size.")}
         let result=try JSONDecoder().decode(Self.self,from:Data(contentsOf:url));try result.validate()
         let expected=result.kind == .backup ? "fm1backup" : "fm1project"
@@ -168,6 +170,7 @@ struct ProjectFileEnvelope:Codable,Sendable {
 
 @MainActor final class ProjectFilesStore:ObservableObject {
     @Published private(set) var items:[ProjectFileItem]=[]
+    @Published private(set) var recentlyDeletedBackup:ProjectFileItem?
     @Published private(set) var isBusy=false
     @Published private(set) var progress:Double?
     @Published private(set) var errorMessage:String?
@@ -183,14 +186,54 @@ struct ProjectFileEnvelope:Codable,Sendable {
     private func disk<T>(_ operation:@escaping ()throws->T)async throws->T {try await withCheckedThrowingContinuation {continuation in io.async {do {continuation.resume(returning:try operation())}catch {continuation.resume(throwing:error)}}}}
     private func begin()throws {guard !isBusy else {throw ProjectFilesError("Another file action is still running.")};isBusy=true;errorMessage=nil;status=nil;progress=nil}
     private func finish(){isBusy=false;progress=nil}
+    private struct DeletedBackupReceipt:Codable {
+        let id:UUID
+        let originalFilename:String
+        let deletedAt:Date
+    }
+    nonisolated private static func ownedEnvelope(_ item:ProjectFileItem,in directory:URL)throws->ProjectFileEnvelope {
+        try checkedDirectory(directory)
+        guard item.url.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath() == directory.standardizedFileURL.resolvingSymlinksInPath() else {throw ProjectFilesError("Choose a file from this instrument’s saved-copy library.")}
+        let envelope=try ProjectFileEnvelope.read(item.url)
+        guard envelope.id == item.id,envelope.kind == item.kind else {throw ProjectFilesError("This saved file changed. Refresh the library and try again.")}
+        return envelope
+    }
+    nonisolated private static func checkedDirectory(_ url:URL)throws {
+        let values=try url.resourceValues(forKeys:[.isDirectoryKey,.isSymbolicLinkKey])
+        guard values.isDirectory == true,values.isSymbolicLink != true else {throw ProjectFilesError("The app’s file folder is unavailable or was replaced by a link.")}
+    }
+    nonisolated private static func deletedBackups(in directory:URL)throws->[(item:ProjectFileItem,receipt:DeletedBackupReceipt)] {
+        try checkedDirectory(directory)
+        let trash=directory.appendingPathComponent(".DeletedBackups",isDirectory:true)
+        guard FileManager.default.fileExists(atPath:trash.path) else{return []}
+        try checkedDirectory(trash)
+        return try FileManager.default.contentsOfDirectory(at:trash,includingPropertiesForKeys:nil).compactMap {container in
+            guard UUID(uuidString:container.lastPathComponent) != nil else{return nil}
+            do {
+                try checkedDirectory(container)
+                let receiptURL=container.appendingPathComponent("receipt.json")
+                let values=try receiptURL.resourceValues(forKeys:[.fileSizeKey,.isRegularFileKey,.isSymbolicLinkKey])
+                guard values.isRegularFile == true,values.isSymbolicLink != true,(1...4096).contains(values.fileSize ?? 0) else{return nil}
+                let receipt=try JSONDecoder().decode(DeletedBackupReceipt.self,from:Data(contentsOf:receiptURL))
+                let name=receipt.originalFilename
+                guard !name.contains("/"),URL(fileURLWithPath:name).lastPathComponent == name,URL(fileURLWithPath:name).pathExtension.lowercased() == "fm1backup" else{return nil}
+                let url=container.appendingPathComponent("backup.fm1backup")
+                let envelope=try ProjectFileEnvelope.read(url)
+                guard envelope.kind == .backup,envelope.id == receipt.id else{return nil}
+                return (ProjectFileItem(id:envelope.id,name:envelope.name,createdAt:envelope.createdAt,kind:envelope.kind,url:url),receipt)
+            } catch {return nil} // Keep damaged/partial recovery files on disk for manual recovery.
+        }.sorted{$0.receipt.deletedAt > $1.receipt.deletedAt}
+    }
     func refresh()async {
-        do {items=try await disk { [directory] in
+        do {let result=try await disk { [directory] in
             try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
-            return try FileManager.default.contentsOfDirectory(at:directory,includingPropertiesForKeys:nil).filter{["fm1project","fm1backup"].contains($0.pathExtension)}.compactMap {url in
+            try Self.checkedDirectory(directory)
+            let items=try FileManager.default.contentsOfDirectory(at:directory,includingPropertiesForKeys:nil).filter{["fm1project","fm1backup"].contains($0.pathExtension.lowercased())}.compactMap {url -> ProjectFileItem? in
                 guard let e=try? ProjectFileEnvelope.read(url) else{return nil}
                 return ProjectFileItem(id:e.id,name:e.name,createdAt:e.createdAt,kind:e.kind,url:url)
             }.sorted{$0.createdAt > $1.createdAt}
-        }}catch {errorMessage=error.localizedDescription}
+            return (items,try Self.deletedBackups(in:directory).first?.item)
+        };items=result.0;recentlyDeletedBackup=result.1}catch {errorMessage=error.localizedDescription}
     }
     func captureExportContext()async throws->(snapshot:SloopWorkSnapshot,package:Data) {
         try begin();defer{finish()};return try await instrument.captureSloopExportContext()
@@ -201,24 +244,67 @@ struct ProjectFileEnvelope:Codable,Sendable {
     private func write(_ envelope:ProjectFileEnvelope)async throws->URL {
         try await disk { [directory] in
             try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
+            try Self.checkedDirectory(directory)
             let url=directory.appendingPathComponent(envelope.id.uuidString).appendingPathExtension(envelope.kind == .backup ? "fm1backup" : "fm1project")
             try envelope.encoded().write(to:url,options:.atomic);return url
         }
     }
-    private func apply(_ envelope:ProjectFileEnvelope,sampleSlot:Int?=nil)async throws {
+    private func apply(_ envelope:ProjectFileEnvelope,sampleSlot:Int?=nil,sampleTrack:Int?=nil)async throws {
         try envelope.validate()
         let recovery=directory.appendingPathComponent(UUID().uuidString).appendingPathExtension("fm1backup")
-        try await instrument.replaceSloopWork(envelope.snapshot,kind:envelope.kind,recoveryURL:recovery,sampleSlot:sampleSlot)
+        try await instrument.replaceSloopWork(envelope.snapshot,kind:envelope.kind,recoveryURL:recovery,sampleSlot:sampleSlot,sampleTrack:sampleTrack)
         status=envelope.kind == .backup ? "Workspace restored. A recovery backup was saved first." : "Project opened as a copy. Previous work is in a recovery backup."
         await refresh()
     }
-    func open(_ item:ProjectFileItem)async {do {try begin();defer{finish()};let e=try await disk{try ProjectFileEnvelope.read(item.url)};try await apply(e)}catch {errorMessage=error.localizedDescription}}
+    func open(_ item:ProjectFileItem)async {
+        do {try begin();defer{finish()};let e=try await disk{[directory] in try Self.ownedEnvelope(item,in:directory)};try await apply(e)}
+        catch {let message=error.localizedDescription;await refresh();errorMessage=message}
+    }
+    /// Removal changes only the library. The complete original bytes remain in
+    /// app-owned recovery storage, and Undo survives a store/app restart.
+    func deleteBackup(_ item:ProjectFileItem)async {
+        do {
+            try begin();defer{finish()}
+            try await disk { [directory] in
+                guard item.kind == .backup else {throw ProjectFilesError("Only workspace backups can be deleted here.")}
+                let envelope=try Self.ownedEnvelope(item,in:directory)
+                let trash=directory.appendingPathComponent(".DeletedBackups",isDirectory:true)
+                try FileManager.default.createDirectory(at:trash,withIntermediateDirectories:true)
+                try Self.checkedDirectory(trash)
+                let container=trash.appendingPathComponent(UUID().uuidString,isDirectory:true)
+                try FileManager.default.createDirectory(at:container,withIntermediateDirectories:false)
+                do {
+                    let receipt=DeletedBackupReceipt(id:envelope.id,originalFilename:item.url.lastPathComponent,deletedAt:Date())
+                    try JSONEncoder().encode(receipt).write(to:container.appendingPathComponent("receipt.json"),options:.atomic)
+                    try FileManager.default.moveItem(at:item.url,to:container.appendingPathComponent("backup.fm1backup"))
+                } catch {try? FileManager.default.removeItem(at:container);throw error}
+            }
+            await refresh();status="Backup removed. You can undo this deletion."
+        } catch {errorMessage=error.localizedDescription}
+    }
+    func restoreDeletedBackup()async {
+        do {
+            try begin();defer{finish()}
+            try await disk { [directory] in
+                guard let deleted=try Self.deletedBackups(in:directory).first else {throw ProjectFilesError("There is no deleted backup to restore.")}
+                let destination=directory.appendingPathComponent(deleted.receipt.originalFilename)
+                let linked=(try? FileManager.default.destinationOfSymbolicLink(atPath:destination.path)) != nil
+                guard !FileManager.default.fileExists(atPath:destination.path),!linked else {throw ProjectFilesError("A file already uses this backup’s original location. It was kept, and the deleted backup is still available to undo.")}
+                try FileManager.default.moveItem(at:deleted.item.url,to:destination)
+                try? FileManager.default.removeItem(at:deleted.item.url.deletingLastPathComponent())
+            }
+            await refresh();status="Backup restored to the library. Current work was not changed."
+        } catch {errorMessage=error.localizedDescription}
+    }
     func inspectImport(_ url:URL)async throws->ProjectFileImportPreview {
         try begin();defer{finish()}
         let result:(ProjectFileEnvelope,URL)=try await disk { [directory] in
             let e=try ProjectFileEnvelope.read(url)
             let staged=directory.appendingPathComponent("Staging",isDirectory:true)
+            try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
+            try Self.checkedDirectory(directory)
             try FileManager.default.createDirectory(at:staged,withIntermediateDirectories:true)
+            try Self.checkedDirectory(staged)
             let target=staged.appendingPathComponent(UUID().uuidString).appendingPathExtension(e.kind == .backup ? "fm1backup" : "fm1project")
             try e.encoded().write(to:target,options:.atomic);return(e,target)
         }
@@ -232,31 +318,49 @@ struct ProjectFileEnvelope:Codable,Sendable {
             do {try await apply(e)}catch {try? await disk {try FileManager.default.removeItem(at:saved)};throw error}
             discardStagedImport(url)
             status="Imported as a new local copy. Previous work is backed up.";await refresh()
-        }catch {errorMessage=error.localizedDescription}
+        }catch {let message=error.localizedDescription;await refresh();errorMessage=message}
     }
     func discardStagedImport(_ url:URL) {
         let staging=directory.appendingPathComponent("Staging",isDirectory:true).standardizedFileURL
         guard url.deletingLastPathComponent().standardizedFileURL == staging else{return}
-        io.async {try? FileManager.default.removeItem(at:url)}
+        io.async { [directory] in
+            guard (try? Self.checkedDirectory(directory)) != nil,(try? Self.checkedDirectory(staging)) != nil,
+                  url.deletingLastPathComponent().resolvingSymlinksInPath() == staging.resolvingSymlinksInPath() else{return}
+            try? FileManager.default.removeItem(at:url)
+        }
     }
     nonisolated private static func stageExport(_ e:ProjectFileEnvelope)throws->URL {
+        let bytes=try e.encoded()
         let folder=FileManager.default.temporaryDirectory.appendingPathComponent("FM1-\(UUID().uuidString)",isDirectory:true)
         try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
         let allowed=CharacterSet.alphanumerics.union(CharacterSet(charactersIn:" -_"))
         let clean=String(e.name.unicodeScalars.map{allowed.contains($0) ? Character(String($0)) : "-"}.prefix(80)).trimmingCharacters(in:.whitespacesAndNewlines)
         let url=folder.appendingPathComponent(clean.isEmpty ? "SLOOP workspace" : clean).appendingPathExtension(e.kind == .backup ? "fm1backup" : "fm1project")
-        try e.encoded().write(to:url,options:.atomic);return url
+        do {try bytes.write(to:url,options:.atomic);return url}
+        catch {try? FileManager.default.removeItem(at:folder);throw error}
     }
     func exportFile(_ item:ProjectFileItem)async throws->URL {
         try begin();defer{finish()}
-        return try await disk {try Self.stageExport(ProjectFileEnvelope.read(item.url))}
+        return try await disk {[directory] in try Self.stageExport(Self.ownedEnvelope(item,in:directory))}
     }
     func exportCurrentBackup()async throws->URL {
         try begin();defer{finish()};let context=try await instrument.captureSloopExportContext()
         let e=ProjectFileEnvelope(name:"SLOOP workspace backup",kind:.backup,snapshot:context.snapshot)
-        _ = try await write(e);let staged=try await disk {try Self.stageExport(e)};await refresh();status="Complete SLOOP workspace backup prepared. Other instruments and the project library are not included.";return staged
+        _ = try await write(e);await refresh()
+        let staged=try await disk {try Self.stageExport(e)}
+        status="Complete SLOOP workspace backup prepared. Other instruments and the project library are not included.";return staged
     }
-    func importSample(slotData:Data,slot:Int,name:String)async throws {
-        do {try begin();defer{finish()};let context=try await instrument.captureSloopExportContext();let changed=try context.snapshot.replacingSample(slotData,slot:slot);try await apply(ProjectFileEnvelope(name:name,kind:.project,snapshot:changed),sampleSlot:slot);status="Added to USR\(slot+1). Play with SAMPLE → SET → USR\(slot+1), or GRAIN → SRC. Previous work is in Recovery & backups."}catch {errorMessage=error.localizedDescription;throw error}
+    func importSample(slotData:Data,slot:Int,name:String,targetTrack:Int?=nil)async throws {
+        try begin();defer{finish()}
+        do {
+            let context=try await instrument.captureSloopExportContext()
+            let changed=try context.snapshot.replacingSample(slotData,slot:slot)
+            try await apply(ProjectFileEnvelope(name:name,kind:.project,snapshot:changed),sampleSlot:slot,sampleTrack:targetTrack)
+            if let targetTrack {status="Added to USR\(slot+1) and assigned to Track \(targetTrack+1). Play it on the keyboard. Previous work is in Recovery & backups."}
+            else {status="Added to USR\(slot+1). Play with SAMPLE → SET → USR\(slot+1), or GRAIN → SRC. Previous work is in Recovery & backups."}
+        } catch {
+            await refresh();errorMessage=nil
+            throw error // The sample sheet owns this error; do not defer a duplicate root alert.
+        }
     }
 }

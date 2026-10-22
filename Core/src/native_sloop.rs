@@ -58,6 +58,7 @@ extern "C" {
     fn slp_file_arrangement_write(data: *const u8, len: u32) -> u32;
     fn slp_file_sample_read(slot: u32, out: *mut u8, capacity: u32) -> i32;
     fn slp_file_sample_write(slot: u32, data: *const u8, len: u32) -> u32;
+    fn slp_file_sample_assign(track: u32, slot: u32) -> u32;
     fn slp_transport(play: i32);
     fn slp_file_commit() -> u32;
 }
@@ -187,6 +188,15 @@ impl Native {
     pub(super) unsafe fn file_sample_write(&mut self, slot: u32, data: *const u8, len: u32) -> i32 {
         self.start();
         let rc = slp_file_sample_write(slot, data, len) as i32;
+        if rc == 0 {
+            self.file_buffers_clear();
+        }
+        rc
+    }
+    #[cfg(fm1_native_sloop)]
+    pub(super) unsafe fn file_sample_assign(&mut self, track: u32, slot: u32) -> i32 {
+        self.start();
+        let rc = slp_file_sample_assign(track, slot) as i32;
         if rc == 0 {
             self.file_buffers_clear();
         }
@@ -525,6 +535,57 @@ mod tests {
             flash[at + 512 + i] = if i % 64 < 32 { 0x77 } else { 0xff };
         }
         flash
+    }
+    #[test]
+    fn imported_sample_assignment_plays_and_reopens_on_each_synth_track() {
+        extern "C" {
+            fn slp_engine_of(track: u32) -> u32;
+            fn slp_preset_of(track: u32) -> u32;
+            fn slp_param_get(track: u32, id: u32) -> i32;
+            fn slp_selected() -> u32;
+        }
+        for track in 0..3 {
+            for slot in 0..4 {
+                let mut m = Native::new(&user_sample(slot)).unwrap();
+                m.start();
+                let before: Vec<_> = (0..3).map(|t| unsafe { slp_engine_of(t) }).collect();
+                assert_eq!(unsafe { m.file_sample_assign(track, slot as u32) }, 0);
+                unsafe {
+                    assert_eq!(slp_engine_of(track), 4);
+                    assert_eq!(slp_selected(), track);
+                    assert_eq!(slp_preset_of(track), 0);
+                    assert_eq!(slp_param_get(track, slp_pe0()), 8 + slot as i32);
+                    for t in 0..3 {
+                        if t != track {
+                            assert_eq!(slp_engine_of(t), before[t as usize]);
+                        }
+                    }
+                    assert_eq!(m.file_sample_assign(3, slot as u32), 1);
+                    assert_eq!(m.file_sample_assign(track, 4), 1);
+                    assert_eq!(m.file_commit(), 0);
+                }
+                let mut flash = blank();
+                unsafe {
+                    m.flash(flash.as_mut_ptr(), FLASH);
+                }
+                let mut reopened = Native::new(&flash).unwrap();
+                reopened.start();
+                unsafe {
+                    assert_eq!(slp_engine_of(track), 4);
+                    assert_eq!(slp_selected(), track);
+                    assert_eq!(slp_param_get(track, slp_pe0()), 8 + slot as i32);
+                }
+                render_chunks(&mut reopened, &[512], 4096);
+                reopened.key(21, true);
+                let audio = render_chunks(&mut reopened, &[31, 512], 22050);
+                assert!(
+                    audio.iter().any(|s| s.abs() > 0.001),
+                    "Track {} USR{} must sound after reopen",
+                    track + 1,
+                    slot + 1
+                );
+            }
+        }
     }
     #[test]
     fn all_four_user_sample_slots_play_from_owned_flash_without_pointer_truncation() {

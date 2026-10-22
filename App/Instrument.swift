@@ -88,14 +88,16 @@ final class Instrument: ObservableObject {
     }
 #endif
     private let beforeEngineStart:(() throws -> Void)?
+    private let afterEngineStart:((AVAudioEngine)->Void)?
     private var restoredSelectionNeedsLoad = false
     // Main-thread policy and operation receipts; machine state stays on worker.
     private var playbackPolicy=PlaybackPolicy()
     private let playbackDemand=PlaybackDemand()
     private var playbackTicket=0
     private var workerPlaybackEpoch=0 // Worker only: explicit Play that started this engine.
+    private var sampleAuditionDepth=0
     private var firmwareLoadPending=false, importPending=false
-    init(directory: URL? = nil, preferences: UserDefaults = .standard, worker:DispatchQueue? = nil,beforeEngineStart:(() throws -> Void)? = nil,nativeOnly:Bool=false) {
+    init(directory: URL? = nil, preferences: UserDefaults = .standard, worker:DispatchQueue? = nil,beforeEngineStart:(() throws -> Void)? = nil,afterEngineStart:((AVAudioEngine)->Void)?=nil,nativeOnly:Bool=false) {
 #if FM1_RESEARCH
         self.nativeOnly=nativeOnly
 #else
@@ -104,6 +106,7 @@ final class Instrument: ObservableObject {
         let nativeOnly=true
 #endif
         self.beforeEngineStart=beforeEngineStart
+        self.afterEngineStart=afterEngineStart
         self.worker=worker ?? DispatchQueue(label:"fm1.instrument",qos:.userInteractive)
         self.preferences = preferences
         emulatorMHz=EmulatorClock.validated(preferences.integer(forKey:EmulatorClock.preferenceKey))
@@ -128,6 +131,11 @@ final class Instrument: ObservableObject {
         observations.append(NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
             if let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
                AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable { self?.outputDisconnected() }
+        })
+        observations.append(NotificationCenter.default.addObserver(forName:AVAudioSession.mediaServicesWereResetNotification,object:nil,queue:.main) { [weak self] _ in
+            // The OS invalidates audio objects on media-service reset. Rebuild
+            // through the same serial stop/start path, retaining user intent.
+            self?.queuePlayback(forceCheckpoint:true)
         })
         if nativeOnly {refresh()}
     }
@@ -228,7 +236,7 @@ final class Instrument: ObservableObject {
 #endif
     private func updatePlaybackDemand() {
         playbackWanted=playbackPolicy.wantsPlayback
-        playbackDemand.set(playbackPolicy.shouldRun)
+        playbackDemand.set(playbackPolicy.shouldRun && sampleAuditionDepth == 0)
     }
     private func beginPlaybackOperation()->Int {
         playbackTicket += 1;busy=true;return playbackTicket
@@ -292,6 +300,25 @@ final class Instrument: ObservableObject {
         guard playbackPolicy.scene(active:active,autoStart:autoStart) else{return}
         if active {requestPlayback()} else {queuePlayback(forceCheckpoint:true)}
     }
+    /// Suspend only app-engine execution, retaining explicit Play/Pause and
+    /// interruption/route policy. The worker barrier drains its final checkpoint
+    /// and shared AVAudioSession deactivation before an audition activates audio.
+    @MainActor func beginSampleAudition() async -> Bool {
+        let wanted=playbackWanted
+        sampleAuditionDepth += 1
+        queuePlayback(forceCheckpoint:true)
+        await withCheckedContinuation { (continuation:CheckedContinuation<Void,Never>) in
+            worker.async { DispatchQueue.main.async {continuation.resume()} }
+        }
+        return wanted
+    }
+    @MainActor func endSampleAudition(resume:Bool) {
+        guard sampleAuditionDepth > 0 else{return}
+        sampleAuditionDepth -= 1
+        // Recompute the existing policy instead of calling resume(), which would
+        // clear a newer manual pause or an interruption's hold authorization.
+        if resume {requestPlayback()} else {queuePlayback()}
+    }
     func interruptionBegan() {
         playbackPolicy.interruptionBegan();queuePlayback(forceCheckpoint:true)
     }
@@ -301,10 +328,12 @@ final class Instrument: ObservableObject {
     func outputDisconnected() {
         playbackPolicy.hold();queuePlayback(forceCheckpoint:true)
     }
-    func load(_ fw:Firmware) {
-        guard !busy else{return}
+    /// A chooser must remain open when another operation owns the worker.
+    @discardableResult func load(_ fw:Firmware)->Bool {
+        guard !busy,!firmwareLoadPending,!importPending else{return false}
         playbackPolicy.play();playbackDemand.clearFailure();updatePlaybackDemand()
         loadFirmware(fw)
+        return true
     }
 #if FM1_RESEARCH
     /// A backend change restarts firmware while preserving the current Play/Pause
@@ -425,6 +454,10 @@ final class Instrument: ObservableObject {
                 activeID=fw.id;activeMode=mode;activeNativeKind=mode == .native ? nativeKind : 0;activeGuestMHz=wantedMHz;installed=true
                 try checkpointActiveFlash()
                 try applyPlaybackWorker()
+                // Loading must publish a real LCD even while paused or before
+                // the audio device delivers its first callback. Prefill alone
+                // cannot advance the normal 15 Hz display timer.
+                let initialDisplay=captureNativeDisplay()
                 // Commit selection only after the candidate has loaded/restored and
                 // its requested playback state has started successfully.
 #if FM1_RESEARCH
@@ -446,7 +479,8 @@ final class Instrument: ObservableObject {
 #if FM1_RESEARCH
                     if mode != .wasm {self.experimentalWebView=nil;self.displayedWebIdentity=nil}
 #endif
-                    self.screen = nil; self.status = "Booting…"
+                    self.screen=initialDisplay?.image;self.leds=initialDisplay?.leds ?? self.leds
+                    self.status = "Booting…"
                 }
                 publishDiagnostics(force:true)
                 completePlaybackOperation(ticket)
@@ -580,7 +614,7 @@ final class Instrument: ObservableObject {
         if requested>0 {webDiagnostics.renderRatioMean=number("renderTotalMs")/(requested/44.1)}
     }
 #endif
-    private func startWorker() throws {
+    private func startWorker(allowStartupRecovery:Bool=true) throws {
         guard hasLoadedEngine, !playing else {return}
         try beforeEngineStart?()
         workerPlaybackEpoch=playbackDemand.epoch
@@ -627,7 +661,38 @@ final class Instrument: ObservableObject {
         playbackStart = ProcessInfo.processInfo.systemUptime
         do { try e.start() }
         catch { stopWorker(); throw error }
+        afterEngineStart?(e)
+        acknowledgeAudioStart(engine:e,ring:ring,generation:g,epoch:workerPlaybackEpoch,allowRecovery:allowStartupRecovery)
         requestProduce(g)
+    }
+    /// One bounded acknowledgement per start, with one fresh graph retry. An
+    /// engine reporting `start()` success is not proof its device is consuming
+    /// audio. Scene/pause/load changes invalidate this receipt before it acts.
+    private func acknowledgeAudioStart(engine:AVAudioEngine,ring:AudioRing,generation g:Int,epoch:Int,allowRecovery:Bool) {
+        let baseline=ring.metrics.outputFrames
+        worker.asyncAfter(deadline:.now()+1) { [weak self,weak engine] in
+            guard let self,let engine,self.engine === engine,self.generation == g,self.playing,
+                  self.playbackDemand.shouldRun,self.playbackDemand.epoch == epoch,
+                  ring.metrics.outputFrames == baseline else{return}
+            self.stopWorker();self.saveFlash(waitForWrite:true)
+            guard self.playbackDemand.shouldRun,self.playbackDemand.epoch == epoch else{return}
+            if allowRecovery {
+                do {
+                    try self.startWorker(allowStartupRecovery:false)
+                    if !self.playbackDemand.shouldRun || self.playbackDemand.epoch != epoch {self.stopWorker();self.saveFlash(waitForWrite:true)}
+                    return
+                }
+                catch {self.failAudioStart(error,epoch:epoch)}
+            } else {self.failAudioStart(self.failure("Audio output did not start. Your saved work was kept. Tap Resume or choose an installed firmware to try again."),epoch:epoch)}
+        }
+    }
+    private func failAudioStart(_ error:Error,epoch:Int) {
+        playbackDemand.fail(epoch:epoch);stopWorker();saveFlash(waitForWrite:true)
+        DispatchQueue.main.async {
+            guard epoch == self.playbackDemand.epoch else{return}
+            self.playbackPolicy.hold();self.updatePlaybackDemand();self.running=false
+            self.status="Paused · tap Resume";self.message=error.localizedDescription
+        }
     }
     private func stopWorker() {
 #if FM1_RESEARCH
@@ -667,6 +732,15 @@ final class Instrument: ObservableObject {
             self.producerScheduled = false
             self.produce(g)
         }
+    }
+    /// Worker only; no audio output or playback-policy mutation is required.
+    private func captureNativeDisplay()->(image:CGImage,leds:[Float])? {
+        guard let machine else{return nil}
+        _=instrument_snapshot(machine,&pixels,&lights)
+        let data=Data(bytes:pixels,count:pixels.count*4)
+        guard let provider=CGDataProvider(data:data as CFData),
+              let image=CGImage(width:240,height:240,bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:960,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGBitmapInfo(rawValue:CGImageAlphaInfo.premultipliedLast.rawValue),provider:provider,decode:nil,shouldInterpolate:false,intent:.defaultIntent) else{return nil}
+        return (image,lights)
     }
     private func produce(_ g: Int, reschedule: Bool = true) {
         guard playing, generation == g, let ring = audioRing, let m = machine,
@@ -1030,7 +1104,7 @@ extension Instrument {
     }
     /// Candidate validation leaves the live engine untouched. The last current
     /// work is captured again at the swap boundary, then written before replacement.
-    @MainActor func replaceSloopWork(_ snapshot:SloopWorkSnapshot,kind:ProjectFileKind,recoveryURL:URL,sampleSlot:Int?=nil)async throws {
+    @MainActor func replaceSloopWork(_ snapshot:SloopWorkSnapshot,kind:ProjectFileKind,recoveryURL:URL,sampleSlot:Int?=nil,sampleTrack:Int?=nil)async throws {
         guard !busy,let selected else {throw ProjectFilesError("Wait for the instrument to finish loading.")}
         let ticket=beginPlaybackOperation()
         try await withCheckedThrowingContinuation { (continuation:CheckedContinuation<Void,Error>) in
@@ -1048,7 +1122,15 @@ extension Instrument {
                             let applied:SloopWorkSnapshot
                             if let sampleSlot {applied=try recovery.replacingSample(snapshot.bytes("sample\(sampleSlot)"),slot:sampleSlot)}
                             else {applied=kind == .project ? try snapshot.projectOverlay(on:recovery) : snapshot}
+                            if let sampleTrack {
+                                guard (0..<3).contains(sampleTrack),let sampleSlot,(0..<4).contains(sampleSlot) else {throw ProjectFilesError("Choose Track 1–3 and a valid user sample slot.")}
+                            }
                             candidate=try applied.nativeCreate(package:package)
+                            if let sampleTrack,let sampleSlot {
+                                let result=instrument_sloop_sample_assign(candidate,UInt32(sampleTrack),UInt32(sampleSlot))
+                                guard result == 0 else {throw ProjectFilesError("The sample could not be assigned to Track \(sampleTrack+1) (\(result)). Your current work was kept.")}
+                                guard instrument_sloop_commit(candidate) == 0 else {throw ProjectFilesError("The assigned sample could not be saved. Your current work was kept.")}
+                            }
                             rollbackFlash=try activeFlash()
                             stopWorker();stopped=true
                             let envelope=ProjectFileEnvelope(name:"Recovery before replacement",kind:.backup,snapshot:recovery)
@@ -1061,9 +1143,10 @@ extension Instrument {
                             try checkpointActiveFlash()
                             try applyPlaybackWorker()
                             instrument_destroy(previous);candidate=nil
+                            let initialDisplay=captureNativeDisplay()
                             publishDiagnostics(force:true)
                             let live=playing
-                            DispatchQueue.main.async {self.screen=nil;self.volume=Double(applied.master)/1023;self.finishPlaybackOperation(ticket,live:live);continuation.resume()}
+                            DispatchQueue.main.async {self.screen=initialDisplay?.image;self.leds=initialDisplay?.leds ?? self.leds;self.volume=Double(applied.master)/1023;self.finishPlaybackOperation(ticket,live:live);continuation.resume()}
                         } catch {
                             if installed {
                                 stopWorker();machine=previous;workerVolume=previousVolume

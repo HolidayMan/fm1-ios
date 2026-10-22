@@ -4,6 +4,15 @@ import XCTest
 /// Only the pinned package is read from Documents. Engines, preferences, project
 /// files and automatic saves all belong to a fresh temporary fixture.
 @MainActor final class ProjectFilesIntegrationTests:XCTestCase {
+    private final class StartGate:@unchecked Sendable {
+        private let lock=NSLock()
+        private var failNext=false
+        func arm(){lock.lock();failNext=true;lock.unlock()}
+        func check()throws {
+            lock.lock();let fail=failNext;failNext=false;lock.unlock()
+            if fail {throw ProjectFilesError("Synthetic audio-start failure after candidate installation")}
+        }
+    }
     private struct Fixture {
         let model:Instrument
         let store:ProjectFilesStore
@@ -41,7 +50,7 @@ import XCTest
         }
     }
 
-    private func fixture()async throws->Fixture {
+    private func fixture(beforeEngineStart:(()throws->Void)?=nil)async throws->Fixture {
         let bytes=try package()
         let root=FileManager.default.temporaryDirectory.appendingPathComponent("ProjectFilesIntegration-\(UUID().uuidString)",isDirectory:true)
         let firmwares=root.appendingPathComponent("Firmwares",isDirectory:true)
@@ -49,7 +58,7 @@ import XCTest
         try bytes.write(to:firmwares.appendingPathComponent("SLOOP-2.7.1.fwsc"))
         let suite="ProjectFilesIntegration.\(UUID().uuidString)"
         let preferences=try XCTUnwrap(UserDefaults(suiteName:suite))
-        let model=Instrument(directory:firmwares,preferences:preferences,nativeOnly:true)
+        let model=Instrument(directory:firmwares,preferences:preferences,beforeEngineStart:beforeEngineStart,nativeOnly:true)
         let fixture=Fixture(model:model,store:ProjectFilesStore(instrument:model,directory:root.appendingPathComponent("Projects",isDirectory:true)),root:root,preferences:preferences,suite:suite)
         do {
             try await waitUntil("The isolated SLOOP fixture was not discovered.") {!model.firmwares.isEmpty}
@@ -196,5 +205,49 @@ import XCTest
         XCTAssertEqual(try Data(contentsOf:external),bytes)
         await f.store.refresh()
         XCTAssertTrue(f.store.items.isEmpty,"Rejected content must create neither a project copy nor a recovery backup")
+    }
+
+    func testFullBackupExportRestoreAndAudioStartRollbackKeepCurrentWorkDurable()async throws {
+        let gate=StartGate(),f=try await fixture(beforeEngineStart:{try gate.check()})
+        addTeardownBlock { @MainActor in await self.cleanup(f) }
+        let original=try await f.model.captureSloopExportContext().snapshot
+        let shared=try await f.store.exportCurrentBackup()
+        defer {try? FileManager.default.removeItem(at:shared.deletingLastPathComponent())}
+        let saved=try XCTUnwrap(f.store.items.first(where:{$0.kind == .backup}))
+        let savedBytes=try Data(contentsOf:saved.url)
+        XCTAssertEqual(try Data(contentsOf:shared),savedBytes,"Save full backup must retain a library copy and prepare an independent share file")
+        assertSameWork(try ProjectFileEnvelope.read(shared).snapshot,original)
+
+        let importedSample=try sample()
+        let changed=try original.replacingSample(importedSample,slot:0)
+        try await f.model.replaceSloopWork(changed,kind:.backup,recoveryURL:f.root.appendingPathComponent("Before-test-change.fm1backup"))
+        f.model.resume();try await settle(f.model,running:true)
+        let before=try await f.model.captureSloopExportContext().snapshot
+        XCTAssertEqual(try before.bytes("sample0"),importedSample)
+        let selected=try XCTUnwrap(f.model.selected)
+        let flash=selected.url.deletingPathExtension().appendingPathExtension("flash")
+        let persisted=try Data(contentsOf:flash)
+        gate.arm()
+        await f.store.open(saved)
+        XCTAssertTrue(f.store.errorMessage?.contains("Synthetic audio-start failure") == true)
+        try await settle(f.model,running:true)
+        XCTAssertEqual(f.model.selected,selected)
+        assertSameWork(try await f.model.captureSloopExportContext().snapshot,before)
+        XCTAssertEqual(try Data(contentsOf:flash),persisted,"A post-install failure must roll the automatic save back byte-for-byte")
+        XCTAssertEqual(try Data(contentsOf:saved.url),savedBytes)
+        let recovery=try XCTUnwrap(f.store.items.first(where:{$0.kind == .backup && $0.id != saved.id}))
+        XCTAssertEqual(try ProjectFileEnvelope.read(recovery.url).snapshot.bytes("sample0"),importedSample)
+
+        await f.store.open(saved)
+        XCTAssertNil(f.store.errorMessage)
+        let restored=try await f.model.captureSloopExportContext().snapshot
+        XCTAssertEqual(restored.master,original.master)
+        for part in original.parts where part.name != "flash" {XCTAssertEqual(try restored.bytes(part.name),part.bytes,part.name)}
+        XCTAssertEqual(try Data(contentsOf:shared),savedBytes,"The previous share must stay usable through both failed and successful restore")
+        XCTAssertEqual(try Data(contentsOf:saved.url),savedBytes)
+        f.model.load(selected);try await settle(f.model,running:true)
+        f.model.pause();try await settle(f.model,running:false)
+        let durable=try await f.model.captureSloopExportContext().snapshot
+        for part in original.parts where part.name != "flash" {XCTAssertEqual(try durable.bytes(part.name),part.bytes,part.name)}
     }
 }

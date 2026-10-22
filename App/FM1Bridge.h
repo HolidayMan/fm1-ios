@@ -33,3 +33,6 @@ int32_t instrument_sloop_commit(void *m);
 
 // Immutable build policy: store archives must report false.
 bool instrument_research_enabled(void);
+
+// Candidate-only SAMPLE engine/USR selection, then explicit commit.
+int32_t instrument_sloop_sample_assign(void *,uint32_t,uint32_t);

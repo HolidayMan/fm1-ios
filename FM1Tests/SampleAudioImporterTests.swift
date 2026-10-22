@@ -1,5 +1,6 @@
 import XCTest
 import CryptoKit
+import AVFoundation
 @testable import FM1
 
 final class SampleAudioImporterTests:XCTestCase {
@@ -65,4 +66,84 @@ final class SampleAudioImporterTests:XCTestCase {
         let mean=source.samples.reduce(0,+)/Float(source.samples.count)
         XCTAssertEqual(mean,0.25,accuracy:0.003,"Downmix must average both channels without adding gain")
     }
+    func testFrameAlignedTrimNeverAddsAnExtraFrameOrExceedsCapacity()throws {
+        let source=SampleAudioSource(name:"frames",samples:Array(repeating:0.2,count:22050*12),sourceRate:22050,sourceChannels:1)
+        var selection=SampleTrimSelection(frameCount:source.samples.count)
+        XCTAssertTrue(selection.fits)
+        XCTAssertEqual(selection.encodedBytes,81920)
+        // Many positions reproduce floating point seconds-to-frame rounding edges.
+        for first in stride(from:1,to:30000,by:173) {
+            selection.setStart(fraction:Double(first)/Double(source.samples.count))
+            selection.fit()
+            let slot=try SampleAudioImporter.encode(source:source,start:selection.start,end:selection.end)
+            let frames=(0..<4).reduce(0){$0 | Int(slot[36+$1]) << ($1*8)}
+            XCTAssertEqual(frames,selection.count)
+            XCTAssertEqual(selection.encodedBytes,512+(frames+1)/2)
+        }
+        selection.setEnd(fraction:1)
+        XCTAssertFalse(selection.fits)
+        selection.setStart(fraction:1)
+        XCTAssertEqual(selection.count,1)
+        selection.move(first:0)
+        XCTAssertEqual(selection.count,1)
+        selection.move(first:Int.max)
+        XCTAssertEqual(selection.last,source.samples.count)
+        XCTAssertEqual(selection.count,1)
+        let before=selection
+        selection.setStart(fraction:.nan);selection.setEnd(fraction:.infinity)
+        XCTAssertEqual(selection,before)
+    }
+    func testPreviewDecodesTheImportedADPCMAndNormalization()throws {
+        let source=SampleAudioSource(name:"quiet",samples:(0..<2205).map{Float(sin(Double($0)*0.12))*0.02},sourceRate:22050,sourceChannels:1)
+        let plain=try SampleAudioImporter.previewWAV(source:source,start:0,end:source.duration)
+        let normalized=try SampleAudioImporter.previewWAV(source:source,start:0,end:source.duration,normalize:true)
+        func peak(_ wav:Data)->Int {
+            stride(from:44,to:wav.count,by:2).map{abs(Int(Int16(bitPattern:UInt16(wav[$0]) | UInt16(wav[$0+1])<<8)))}.max() ?? 0
+        }
+        XCTAssertLessThan(peak(plain),1000)
+        XCTAssertGreaterThan(peak(normalized),28000)
+        XCTAssertEqual(normalized.count,44+source.samples.count*2)
+        // Hand decoded IMA stream 0,7,15,7 from the pinned upstream codec vector.
+        let vector=SampleAudioSource(name:"vector",samples:[0,1000,-1000,20000].map{Float($0)/32768},sourceRate:22050,sourceChannels:1)
+        let preview=try SampleAudioImporter.previewWAV(source:vector,start:0,end:vector.duration)
+        let decoded=stride(from:44,to:preview.count,by:2).map{Int16(bitPattern:UInt16(preview[$0]) | UInt16(preview[$0+1])<<8)}
+        XCTAssertEqual(decoded,[0,11,-19,44])
+    }
+    func testVoiceMemoM4ADecodesUsingNativeAudioDecoder()throws {
+        let url=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("m4a")
+        defer {try? FileManager.default.removeItem(at:url)}
+        func record()throws {
+            let file=try AVAudioFile(forWriting:url,settings:[AVFormatIDKey:kAudioFormatMPEG4AAC,AVSampleRateKey:44100,AVNumberOfChannelsKey:1,AVEncoderBitRateKey:64000])
+            let buffer=try XCTUnwrap(AVAudioPCMBuffer(pcmFormat:file.processingFormat,frameCapacity:4410))
+            buffer.frameLength=4410
+            let channel=try XCTUnwrap(buffer.floatChannelData?[0])
+            for i in 0..<4410 {channel[i]=Float(sin(Double(i)*0.1))*0.3}
+            try file.write(from:buffer)
+        }
+        try record() // Close/finalize the compressed file before decoding.
+        let source=try SampleAudioImporter.load(url)
+        XCTAssertEqual(source.sourceChannels,1)
+        XCTAssertEqual(source.duration,0.1,accuracy:0.025)
+        XCTAssertGreaterThan(source.samples.map{abs($0)}.max() ?? 0,0.1)
+        XCTAssertEqual(try SampleAudioImporter.encode(source:source,start:0,end:source.duration).prefix(4),Data("FSMP".utf8))
+    }
+    @MainActor func testAuditionReactivatesStoppedSessionAndAdvancesPlayer()async throws {
+        // Reproduce opening Files after the instrument worker has paused/deactivated audio.
+        try AVAudioSession.sharedInstance().setActive(false,options:.notifyOthersOnDeactivation)
+        let source=SampleAudioSource(name:"preview",samples:(0..<22050).map{Float(sin(Double($0)*0.12))*0.1},sourceRate:22050,sourceChannels:1)
+        let audition=FM1SampleAudition()
+        try audition.play(SampleAudioImporter.previewWAV(source:source,start:0,end:source.duration))
+        XCTAssertTrue(audition.playing)
+        XCTAssertEqual(audition.duration,1,accuracy:0.001)
+        try await Task.sleep(for:.milliseconds(180))
+        XCTAssertGreaterThan(audition.currentTime,0.05,"AVAudioPlayer must actually advance after session deactivation")
+        let obsolete=try AVAudioPlayer(data:SampleAudioImporter.previewWAV(source:source,start:0,end:source.duration))
+        audition.audioPlayerDidFinishPlaying(obsolete,successfully:true)
+        await Task.yield()
+        XCTAssertTrue(audition.playing,"Completion of an older player must not stop a newer preview")
+        audition.stop()
+        XCTAssertFalse(audition.playing)
+        XCTAssertEqual(audition.currentTime,0)
+    }
+
 }

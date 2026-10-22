@@ -125,6 +125,22 @@ pub unsafe extern "C" fn instrument_sloop_sample_write(
     }
     -1
 }
+/// Candidate-only user sample routing; tracks 0..2, slots 0..3.
+#[no_mangle]
+pub unsafe extern "C" fn instrument_sloop_sample_assign(
+    m: *mut Instrument,
+    track: u32,
+    slot: u32,
+) -> i32 {
+    if track >= 3 || slot >= 4 {
+        return -1;
+    }
+    #[cfg(fm1_native_sloop)]
+    if let Some(n) = sloop(m) {
+        return catch_unwind(AssertUnwindSafe(|| n.file_sample_assign(track, slot))).unwrap_or(-1);
+    }
+    -1
+}
 #[no_mangle]
 pub unsafe extern "C" fn instrument_sloop_transport(m: *mut Instrument, play: bool) -> bool {
     #[cfg(fm1_native_sloop)]
