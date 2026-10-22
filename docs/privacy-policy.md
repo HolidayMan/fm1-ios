@@ -1,9 +1,9 @@
-# FM-1 Instrument privacy policy
+# PocketFM privacy policy
 
 Effective date: 22 October 2026  
 Publisher: Oleksii Pitenko
 
-FM-1 Instrument is an independent musical instrument application. It does not require an account and has no advertising or analytics SDK. We do not operate a service that collects your projects, recordings, usage history, identifiers or contact information.
+PocketFM is an independent musical instrument application. It does not require an account and has no advertising or analytics SDK. We do not operate a service that collects your projects, recordings, usage history, identifiers or contact information.
 
 ## Your music and settings
 
