@@ -79,3 +79,11 @@ nonempty store status or store error, while cancelled pickers and nil resets
 retain the preceding result. This also covers subsequent copy, sample, restore
 and backup-library actions. Independent review found no blocker in this fix.
 Build 27 was uploaded but was not assigned to Owner Beta.
+
+Build 28's final system-UI delivery rerun passed in 114.671 seconds: Share
+cancellation, native Save to Files, cancelled external import, external backup
+validation and confirmation, the latest success message, exactly two additional
+backup records, and return to Playing. This completes five distinct UI workflows
+across retained simulator runs. The source-native data/audio code did not change
+for the final status fix; its existing platform and host results remain applicable.
+Physical iPhone acceptance of this release remains separate.
