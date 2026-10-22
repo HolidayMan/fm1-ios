@@ -80,15 +80,14 @@ final class SampleImportUITests:XCTestCase {
         let zoom=element("Sample waveform zoom",in:app)
         reveal(zoom,in:app);zoom.tap() // Whole 120-second recording.
         let scroll=visibleScroll(in:app)
-        scroll.coordinate(withNormalizedOffset:CGVector(dx:0.92,dy:0.3)).press(forDuration:0.05,thenDragTo:scroll.coordinate(withNormalizedOffset:CGVector(dx:0.92,dy:0.75)))
-        let graphStart=element("Sample trim start handle",in:app)
+        let graphStart=app.otherElements.matching(NSPredicate(format:"label == %@","Sample start")).firstMatch
         XCTAssertTrue(graphStart.waitForExistence(timeout:10),"The native trim handle must be accessible: \(app.debugDescription)")
         // GeometryReader itself has no AX node. Use the observed accessible
         // handle's vertical center to touch the overview at 80% of its width.
         scroll.coordinate(withNormalizedOffset:.zero).withOffset(CGVector(dx:scroll.frame.width*0.8,dy:graphStart.frame.midY-scroll.frame.minY)).tap()
         reveal(zoom,in:app);zoom.tap() // Zoom around the later fixed-length window.
-        scroll.coordinate(withNormalizedOffset:CGVector(dx:0.92,dy:0.3)).press(forDuration:0.05,thenDragTo:scroll.coordinate(withNormalizedOffset:CGVector(dx:0.92,dy:0.75)))
-        let start=element("Sample trim start handle",in:app),end=element("Sample trim end handle",in:app)
+        let start=app.otherElements.matching(NSPredicate(format:"label == %@","Sample start")).firstMatch
+        let end=app.otherElements.matching(NSPredicate(format:"label == %@","Sample end")).firstMatch
         XCTAssertTrue(start.exists);XCTAssertTrue(end.exists)
         let startSeconds=Double(((start.value as? String ?? "").components(separatedBy:" ").first ?? "").replacingOccurrences(of:",",with:".")) ?? -1
         XCTAssertGreaterThan(startSeconds,60,"Full-recording gesture must select a later region without expanding it beyond slot capacity")

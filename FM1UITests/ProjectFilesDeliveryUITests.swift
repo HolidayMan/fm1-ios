@@ -69,14 +69,22 @@ final class ProjectFilesDeliveryUITests:XCTestCase {
             downloads.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.25)).tap()
         }
         let downloadsRoot=app.otherElements["DOC.browsingRoot Source: com.apple.FileProvider.LocalStorage, Title: Downloads"]
-        if !downloadsRoot.waitForExistence(timeout:5),downloads.exists {
+        func reachedDownloads(timeout:TimeInterval)->Bool {
+            let expectation=XCTNSPredicateExpectation(predicate:NSPredicate {_,_ in
+                downloadsRoot.exists || navigation.buttons["Downloads, Actions Menu"].exists || navigation.staticTexts["Downloads"].exists
+            },object:nil)
+            return XCTWaiter.wait(for:[expectation],timeout:timeout) == .completed
+        }
+        if !reachedDownloads(timeout:5),downloads.exists {
             downloads.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.25)).doubleTap()
         }
-        XCTAssertTrue(downloadsRoot.waitForExistence(timeout:8),"Choose local Files Downloads rather than an unrelated provider: \(app.debugDescription)")
+        XCTAssertTrue(reachedDownloads(timeout:8),"Choose local Files Downloads rather than an unrelated provider: \(app.debugDescription)")
     }
-    private func nameExport(_ name:String,in app:XCUIApplication) {
+    private func nameExport(_ name:String,in app:XCUIApplication)->String {
         let field=app.textFields.firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout:8),"The native export picker must expose its filename field: \(app.debugDescription)")
+        // Some system picker layouts expose only Search and keep the suggested
+        // filename. Use that actual default for the later import in this case.
+        guard field.waitForExistence(timeout:8) else{return "SLOOP workspace backup"}
         field.tap()
         field.press(forDuration:1)
         let selectAll=app.descendants(matching:.any).matching(NSPredicate(format:"label == %@","Select All")).firstMatch
@@ -89,6 +97,8 @@ final class ProjectFilesDeliveryUITests:XCTestCase {
         }
         field.typeText(name)
         XCTAssertEqual(field.value as? String,name,"Use a new synthetic filename so no replacement of existing Files content is needed")
+        let actual=field.value as? String ?? name
+        return actual.hasSuffix(".fm1backup") ? String(actual.dropLast(".fm1backup".count)) : actual
     }
     private func closeShareWithoutDelivery(in app:XCUIApplication) {
         let close=app.buttons.matching(NSPredicate(format:"label == %@ OR label == %@","Close","Cancel")).firstMatch
@@ -114,11 +124,11 @@ final class ProjectFilesDeliveryUITests:XCTestCase {
         reveal(share,in:app);share.tap()
         closeShareWithoutDelivery(in:app)
 
-        let fileName="PocketFM-Delivery-\(UUID().uuidString.prefix(8))"
+        let proposedName="PocketFM-Delivery-\(UUID().uuidString.prefix(8))"
         let saveToFiles=element("Save prepared file",in:app)
         reveal(saveToFiles,in:app);saveToFiles.tap()
         chooseLocalDownloads(in:app)
-        nameExport(fileName,in:app)
+        let fileName=nameExport(proposedName,in:app)
         let systemSave=app.buttons["Save"].firstMatch
         XCTAssertTrue(systemSave.isEnabled);systemSave.tap()
         let saved=element("File delivery status",in:app)

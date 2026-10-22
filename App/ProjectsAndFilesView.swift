@@ -144,7 +144,10 @@ private struct FM1PreparedFile:Identifiable {
             .toolbar {ToolbarItem(placement:.confirmationAction){Button("Done"){dismiss()}.disabled(occupied)}}
             .tint(theme.accent)
             .task(id:instrument.selected?.id){await store.refresh()}
-            .onReceive(store.$errorMessage){if let message=$0 {errorText=message}}
+            // A completed file action supersedes an earlier export receipt.
+            // Nil resets and cancelled pickers retain the previous result.
+            .onReceive(store.$status){if $0 != nil {deliveryStatus=nil}}
+            .onReceive(store.$errorMessage){if let message=$0 {deliveryStatus=nil;errorText=message}}
             .interactiveDismissDisabled(occupied)
             .alert("Save a copy",isPresented:$naming) {
                 TextField("Project name",text:$copyName)

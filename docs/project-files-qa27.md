@@ -1,4 +1,4 @@
-# File workflow fixes — build 27 candidate
+# File workflow fixes — builds 27–28
 
 This change addresses native startup and SLOOP file actions. The physical report
 was on 0.6.8 (25): after a warm-session failure, every firmware could remain at
@@ -52,3 +52,30 @@ export/import and visual acceptance are tracked separately from host tests.
 This is a single-zone sample importer. Automatic chopping, multi-file drum kits,
 MIDI file import/export, and official web-editor JSON/`.sloopsong` interchange
 are not implemented. PocketFM projects/backups use the app's own checked format.
+
+## Simulator UI acceptance
+
+Independent screenshot review confirmed a single waveform with two trim handles
+and the active preview control. Completed system-UI scenarios cover named-copy
+save/open cancellation and confirmation, WAV preparation, backup restore, delete
+cancellation/confirmation and Undo, and sample audition while manually paused.
+The full sample scenario selects a region beyond 60 seconds in a 120-second real
+Files import, zooms and trims a handle, plays/stops preview, assigns Track 3 and
+returns to the playing instrument. All use isolated synthetic workspaces.
+
+Earlier UI failures were retained as harness receipts: the native Files title
+changes accessibility role; duplicate backup names require a count assertion;
+scrolling the parent sheet or pulling down at the top interacts with the wrong
+view or dismisses the editor. These were corrected in tests without production
+changes. External Files delivery/reimport is recorded separately.
+
+## Final external-delivery finding
+
+The real Save to Files → external backup picker → import confirmation path
+wrote both the imported named backup and its recovery copy (library count +2).
+A production UI defect nevertheless kept showing the earlier “Saved” delivery
+receipt, masking the new import result. Build 28 clears that receipt on a new
+nonempty store status or store error, while cancelled pickers and nil resets
+retain the preceding result. This also covers subsequent copy, sample, restore
+and backup-library actions. Independent review found no blocker in this fix.
+Build 27 was uploaded but was not assigned to Owner Beta.
