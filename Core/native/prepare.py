@@ -22,4 +22,7 @@ module.GEN=source/'build/generated';module.generate()
 import hashlib
 for name,expected in lock['generated_headers_sha256'].items():
     if hashlib.sha256((module.GEN/name).read_bytes()).hexdigest()!=expected: sys.exit('generated hash mismatch: '+name)
-print('Verified exact SLOOP source and all seven generated resources at '+str(source))
+package=source/lock['package']['path']
+if package.stat().st_size != lock['package']['size'] or hashlib.sha256(package.read_bytes()).hexdigest()!=lock['package']['sha256']:
+    sys.exit('release package hash/size mismatch')
+print('Verified exact SLOOP '+lock['tag']+' source, package and all seven generated resources at '+str(source))

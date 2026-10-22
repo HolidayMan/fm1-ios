@@ -1,4 +1,7 @@
 import SwiftUI
+#if FM1_RESEARCH
+import WebKit
+#endif
 
 @main struct FM1App:App {
     @StateObject private var instrument:Instrument
@@ -6,10 +9,10 @@ import SwiftUI
         if let relative=ProcessInfo.processInfo.environment[AppLaunchFixture.environmentKey] {
             let documents=FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0]
             let fixture=AppLaunchFixture.resolve(relative,documents:documents)
-            let model=Instrument(directory:fixture ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),preferences:UserDefaults(suiteName:"LifecycleUI.\(UUID().uuidString)")!)
+            let model=Instrument(directory:fixture ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),preferences:UserDefaults(suiteName:"LifecycleUI.\(UUID().uuidString)")!,nativeOnly:true)
             if fixture == nil {model.message="The isolated lifecycle fixture is unavailable."}
             _instrument=StateObject(wrappedValue:model)
-        } else {_instrument=StateObject(wrappedValue:Instrument())}
+        } else {_instrument=StateObject(wrappedValue:Instrument(nativeOnly:true))}
     }
     @Environment(\.scenePhase) private var scenePhase
     private var automaticStartupAllowed:Bool {
@@ -20,10 +23,11 @@ import SwiftUI
         WindowGroup {
             InstrumentView(instrument:instrument)
                 .preferredColorScheme(.dark)
-                .onAppear {instrument.sceneChanged(active:scenePhase == .active,autoStart:automaticStartupAllowed);ControlHaptics.shared.prepareButton()}
+                .onAppear {instrument.sceneChanged(active:scenePhase == .active,autoStart:automaticStartupAllowed);ControlHaptics.shared.prepareButton();UIResponsivenessProbe.shared.start()}
                 .onChange(of:scenePhase) {phase in
                     instrument.sceneChanged(active:phase == .active,autoStart:automaticStartupAllowed)
-                    if phase == .active {ControlHaptics.shared.prepareButton()}
+                    if phase == .active {ControlHaptics.shared.prepareButton();UIResponsivenessProbe.shared.start()}
+                    else {UIResponsivenessProbe.shared.pauseAndWrite()}
                 }
         }
     }
@@ -34,104 +38,203 @@ struct InstrumentView:View {
     @State private var display=false
     @State private var about=false
     @State private var choosingFinish=false
+    @State private var projectFiles=false
     @AppStorage("panelFinish") private var finishName=PanelFinish.black.rawValue
+    @AppStorage("instrumentHeaderCollapsed") private var headerCollapsed=false
     private var finish:PanelFinish {PanelFinish(rawValue:finishName) ?? .black}
     var body:some View {
+        UIResponsivenessProbe.shared.measure("InstrumentView.description") {
         GeometryReader {geo in
-            VStack(spacing:3) {
-                HStack(spacing:10) {
-                    Button {library=true;ControlHaptics.shared.button()} label:{
-                        HStack(spacing:7) {
-                            Circle().fill(instrument.running ? Color.green : Color.gray).frame(width:5,height:5)
-                            Text(instrument.selected?.name ?? "Choose firmware").lineLimit(1)
-                            Image(systemName:"chevron.down").font(.system(size:9,weight:.bold))
-                        }.font(.system(size:12,weight:.semibold))
-                    }.accessibilityIdentifier("Firmware library")
-                    Spacer(minLength:4)
-                    if instrument.busy {ProgressView().controlSize(.mini)}
-                    Text(instrument.status).font(.system(size:9)).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth:160,alignment:.trailing)
-                    Button {instrument.playbackWanted ? instrument.pause() : instrument.resume();ControlHaptics.shared.button()} label:{Image(systemName:instrument.playbackWanted ? "pause.fill" : "play.fill").frame(width:31,height:28)}
-                        .disabled(instrument.selected == nil || (instrument.busy && !instrument.playbackWanted)).accessibilityLabel(instrument.playbackWanted ? "Pause instrument" : "Resume instrument")
-                    Button {instrument.toggleMute();ControlHaptics.shared.button()} label:{Image(systemName:instrument.muted ? "speaker.slash" : "speaker.wave.2").frame(width:31,height:28)}.accessibilityLabel("Mute audio")
-                    Button {choosingFinish=true;ControlHaptics.shared.button()} label:{
-                        HStack(spacing:0) {Circle().fill(finish.swatch).frame(width:16,height:16);Circle().fill(finish.secondarySwatch).frame(width:16,height:16).padding(.leading,-7)}.frame(width:31,height:28)
-                    }.accessibilityLabel("Panel color").accessibilityValue(finish.rawValue)
-                    Button {about=true;ControlHaptics.shared.button()} label:{Image(systemName:"info.circle").frame(width:31,height:28)}.accessibilityLabel("About")
-                }.foregroundStyle(.white.opacity(0.9)).padding(.horizontal,9).frame(height:29)
-                PanelView(instrument:instrument,finish:finish,showScreen:{display=true})
-            }.padding(.horizontal,3)
-                .frame(width:geo.size.width,height:geo.size.height)
-                .background(Color(white:0.055))
-        }.ignoresSafeArea(edges:.bottom).statusBarHidden().persistentSystemOverlays(.hidden).defersSystemGestures(on:.bottom)
+            // Reuse the landscape side gutter without pushing targets against
+            // the physical edge. Recompute after rotation as the insets swap.
+            let gutterExtension=min(44,max(0,geo.safeAreaInsets.trailing-12))
+            let gutterInset=max(0,12-geo.safeAreaInsets.trailing)
+            ZStack(alignment:.topTrailing) {
+                VStack(spacing:0) {
+                    if !headerCollapsed {topControls.zIndex(1)}
+                    PanelView(instrument:instrument,finish:finish,knobReferenceHeight:geo.size.height-32,showScreen:{display=true})
+                }.padding(.horizontal,1).padding(.trailing,44-gutterExtension+gutterInset)
+                    .frame(width:geo.size.width,height:geo.size.height)
+                VStack(spacing:2) {
+                    Button {
+                        headerCollapsed.toggle();ControlHaptics.shared.button()
+                    } label:{
+                        Image(systemName:headerCollapsed ? "chevron.down" : "chevron.up")
+                            .font(.system(size:16,weight:.semibold))
+                            .frame(width:44,height:44).contentShape(Rectangle())
+                    }.buttonStyle(.plain).foregroundStyle(finish.accentColor)
+                        .accessibilityIdentifier("Toggle top controls")
+                        .accessibilityLabel(headerCollapsed ? "Show top controls" : "Hide top controls")
+                        .accessibilityValue(headerCollapsed ? "Collapsed" : "Expanded")
+                        .accessibilityHint("Firmware, playback, color and information controls")
+                    if instrument.supportsProjectFiles {
+                    Button {projectFiles=true;ControlHaptics.shared.button()} label:{
+                        Image(systemName:"folder").font(.system(size:17,weight:.medium))
+                            .frame(width:44,height:44).contentShape(Rectangle())
+                    }.buttonStyle(.plain).foregroundStyle(finish.accentColor)
+                        .accessibilityIdentifier("Projects and files")
+                        .accessibilityLabel("Projects and files")
+                    }
+                }.padding(.top,16).offset(x:gutterExtension-gutterInset)
+            }.frame(width:geo.size.width,height:geo.size.height)
+                .background(Color.black)
+        }.background {
+            // Keep an attached, full-sized WK surface while the native panel draws
+            // over it. No browser UI, touch interception or offscreen benchmark.
+            #if FM1_RESEARCH
+            if !instrument.nativeOnly,let web=instrument.experimentalWebView {WebEngineSurface(webView:web).id(ObjectIdentifier(web)).allowsHitTesting(false).accessibilityHidden(true)}
+            #endif
+        }.background(Color.black.ignoresSafeArea()).ignoresSafeArea(edges:.bottom).statusBarHidden().persistentSystemOverlays(.hidden).defersSystemGestures(on:.bottom)
         .sheet(isPresented:$library) {FirmwareLibraryView(instrument:instrument)}
+        .sheet(isPresented:$projectFiles) {
+            ProjectsAndFilesView(instrument:instrument,finish:finish)
+                .presentationDetents([.large]).presentationDragIndicator(.visible)
+        }
         .sheet(isPresented:$choosingFinish) {
             NavigationStack {
-                VStack {
+                ScrollView {
                     LazyVGrid(columns:[GridItem(.flexible()),GridItem(.flexible())],spacing:8) {
                         ForEach(PanelFinish.allCases) {option in
                             Button {finishName=option.rawValue;choosingFinish=false;ControlHaptics.shared.button()} label:{
                                 HStack(spacing:12) {
                                     HStack(spacing:0) {Circle().fill(option.swatch).frame(width:28,height:28);Circle().fill(option.secondarySwatch).frame(width:28,height:28).padding(.leading,-10)}
-                                    Text(option.rawValue).font(.system(size:14,weight:.medium)).foregroundStyle(.primary)
+                                    Text(option.rawValue).font(.body.weight(.medium)).foregroundStyle(.primary)
                                     Spacer(minLength:0)
-                                    Image(systemName:option==finish ? "checkmark.circle.fill" : "circle").foregroundStyle(option==finish ? Color.mint : Color.secondary)
-                                }.padding(12).background(.quaternary,in:RoundedRectangle(cornerRadius:12))
+                                    Image(systemName:option==finish ? "checkmark.circle.fill" : "circle").foregroundStyle(option==finish ? finish.accentColor : Color.secondary)
+                                }.frame(minHeight:44).padding(12)
+                                    .background(FM1SurfaceTheme(finish:finish).contentBackground.opacity(0.8),in:RoundedRectangle(cornerRadius:16))
+                                    .overlay(RoundedRectangle(cornerRadius:16).strokeBorder(option==finish ? finish.accentColor.opacity(0.6) : Color.clear,lineWidth:1))
                             }.buttonStyle(.plain).accessibilityIdentifier("Finish \(option.rawValue)")
                         }
                     }.padding(16)
-                    Spacer(minLength:0)
                 }.navigationTitle("Panel color").navigationBarTitleDisplayMode(.inline).toolbar {Button("Done"){choosingFinish=false}}
+                    .background(FM1SurfaceTheme(finish:finish).background)
             }
         }
         .sheet(isPresented:$display) {
-            VStack(spacing:18) {
-                HStack {Text("Display").font(.headline);Spacer();Button("Done"){display=false}}
-                if let image=instrument.screen {Image(decorative:image,scale:1).resizable().interpolation(.none).aspectRatio(contentMode:.fit)}
-                else {ContentUnavailableView("No firmware running",systemImage:"display",description:Text("Choose an FM-1 firmware to see its display."))}
-            }.padding(24).presentationDetents([.large])
+            EnlargedDisplayView(frames:instrument.displayState,finish:finish) {display=false}
+                .presentationDetents([.large])
         }
         .sheet(isPresented:$about) {
             NavigationStack {
                 List {
-                    Section("FM–1 · Native prototype") {
-                        Text("A touch instrument inspired by the FM-1, with a real emulated CPU and original firmware controls. Play chords, slide between keys and drag knobs vertically. Tap the display to enlarge it.")
-                        Text("Core: fm1-emu by Joakim Eriksson · MIT. This independent app is not affiliated with M-VAVE. Panel colors follow the six finishes shown by M-VAVE; screen colors are approximations.")
+                    Section("PocketFM") {
+                        Text("A touch instrument inspired by the FM-1. Play chords, slide between keys and drag knobs vertically. Tap the display to enlarge it. Use the side arrow to show or hide the top controls.")
+                        Text("This independent app is not affiliated with M-VAVE. Panel colors are inspired by the six hardware finishes; screen colors are approximations.")
                     }
-                    Section("Current build") {
-                        Text("Choose a firmware from the catalogue or import .fwsc from Files. Downloads require a network connection. Firmware and separate saved sounds stay on this device. Audio pauses when the app leaves the foreground or the output route changes.")
-                        Text("Compatibility and real-time performance vary by firmware. The catalogue identifies available releases; it does not certify every version. No microphone or account is needed.")
+                    Section("Playing and saving") {
+                        Text("Choose a release from the firmware library. Its download size is shown before you start. Downloads need an internet connection; installed releases can be played offline.")
+                        Text("Each release keeps its own saved sounds on this device. Switching releases keeps those saves. Audio pauses when you leave the app or disconnect the audio output.")
                     }
-                    Section {
-                        LabeledContent("Audio engine",value:instrument.audioDiagnostics.backend?.displayName ?? "Not loaded")
-                        LabeledContent("Render time / audio time",value:String(format:"%.0f%%",instrument.audioDiagnostics.renderRatioMean*100))
-                        LabeledContent("95th percentile",value:String(format:"%.0f%%",instrument.audioDiagnostics.renderRatioP95*100))
-                        LabeledContent("Output underrun frames",value:"\(instrument.audioDiagnostics.outputUnderrunFrames)")
-                        LabeledContent("Callbacks with underruns",value:"\(instrument.audioDiagnostics.outputUnderrunCallbacks)")
-                        LabeledContent("Delivered / requested frames",value:"\(instrument.audioDiagnostics.outputDeliveredFrames) / \(instrument.audioDiagnostics.outputFrames)")
-                        LabeledContent("Missing firmware frames",value:"\(instrument.audioDiagnostics.missingFrames)")
-                        LabeledContent("Queued audio",value:String(format:"%.1f ms",instrument.audioDiagnostics.bufferedMilliseconds))
-                        LabeledContent("Buffer target / maximum",value:String(format:"%.1f / %.1f ms",instrument.audioDiagnostics.lookaheadMilliseconds,instrument.audioDiagnostics.maximumBufferedMilliseconds))
-                    } header:{Text("Audio performance")}
-                    footer:{Text("Below 100% means the audio engine renders faster than audio plays. Underruns count output frames that had no queued audio; missing firmware frames are counted separately. Buffer duration is not total device latency. Listening and physical-device latency still need separate checks.")}
-                    Section("Third-party licenses") {
-                        NavigationLink("fm1-emu · MIT") {LicenseNoticeView(title:"fm1-emu",resource:"LICENSE-fm1-emu")}
-                        NavigationLink("Native SLOOP · notices & attribution") {LicenseNoticeView(title:"Native SLOOP notices",resource:"NOTICE-native-sloop")}
-                        NavigationLink("Native SLOOP · GNU GPL version 3") {LicenseNoticeView(title:"GNU GPL version 3",resource:"LICENSE-native-sloop")}
+                    if CatalogFirmware.available.contains(where:{$0.id == "official-open"}) {
+                        Section("FM1 Open preview") {
+                            Text("FM1 Open uses the open-source FM1 Open synthesizer. Its sound can differ from the hardware and the original factory sound bank is not included. This preview keeps its own saved sounds. Older, incompatible saves remain on this device.")
+                                .accessibilityIdentifier("FM1 Open preview information")
+                        }
                     }
-                }.navigationTitle("About").toolbar {Button("Done"){about=false}}
+                    Section("Privacy") {
+                        Text("Playing and saving happen on this device. No account or microphone access is required. Download requests go to the release hosts, which receive normal connection information such as your IP address. Source links open in your browser.").accessibilityIdentifier("Privacy information")
+                        Text("Downloaded files and saved sounds stay in app storage. Deleting the app removes its local files; device backups follow your system settings.")
+                        if let privacyPolicyURL {Link("Privacy policy",destination:privacyPolicyURL)}
+                    }
+                    Section("Credits and licenses") {
+                        NavigationLink("fm1-emu · MIT") {LicenseNoticeView(title:"fm1-emu",resource:"LICENSE-fm1-emu",finish:finish)}
+                        NavigationLink("SLOOP · credits") {LicenseNoticeView(title:"SLOOP credits",resource:"NOTICE-native-sloop",finish:finish)}
+                        NavigationLink("SLOOP · GNU GPL version 3") {LicenseNoticeView(title:"GNU GPL version 3",resource:"LICENSE-native-sloop",finish:finish)}
+                        NavigationLink("Firmware authors · credits") {LicenseNoticeView(title:"Firmware credits",resource:"NOTICE-native-family",finish:finish)}
+                        NavigationLink("FM1 Open · credits") {LicenseNoticeView(title:"FM1 Open credits",resource:"NOTICE-native-official-preview",finish:finish)}
+                        NavigationLink("FM1 Open · license") {LicenseNoticeView(title:"FM1 Open license",resource:"LICENSE-native-official-preview",finish:finish)}
+                        NavigationLink("FM1 Open · third-party credits") {LicenseNoticeView(title:"FM1 Open preview credits",resource:"THIRD-PARTY-native-official-preview",finish:finish)}
+                        if CatalogFirmware.available.contains(where:{$0.id == "skiff"}) {
+                            NavigationLink("Skiff · credits") {LicenseNoticeView(title:"Skiff credits",resource:"NOTICE-native-skiff",finish:finish)}
+                            NavigationLink("Skiff · license") {LicenseNoticeView(title:"Skiff license",resource:"LICENSE-native-skiff",finish:finish)}
+                            NavigationLink("Skiff · third-party credits") {LicenseNoticeView(title:"Skiff third-party credits",resource:"THIRD-PARTY-native-skiff",finish:finish)}
+                        }
+                    }
+                }.scrollContentBackground(.hidden).background(FM1SurfaceTheme(finish:finish).background)
+                    .navigationTitle("About").toolbar {Button("Done"){about=false}}
             }
         }
+        .tint(finish.accentColor)
         .alert("Couldn’t load firmware",isPresented:Binding(get:{instrument.message != nil},set:{if !$0{instrument.message=nil}})) {Button("OK"){instrument.message=nil}} message:{Text(instrument.message ?? "")}
+        }
+    }
+    private var privacyPolicyURL:URL? {
+        guard let value=Bundle.main.object(forInfoDictionaryKey:"FM1PrivacyPolicyURL") as? String,
+              let url=URL(string:value),url.scheme == "https",url.host != nil else{return nil}
+        return url
+    }
+    private var playbackStatus:String {
+        if instrument.busy {return "Loading…"}
+        if instrument.running {return "Playing"}
+        if instrument.selected == nil {return ""}
+        return "Paused"
+    }
+    private var topControls:some View {
+        HStack(spacing:4) {
+            Button {library=true;ControlHaptics.shared.button()} label:{
+                HStack(spacing:7) {
+                    Text(instrument.selected?.name ?? "Choose firmware").lineLimit(1)
+                    Image(systemName:"chevron.down").font(.system(size:9,weight:.bold))
+                }.font(.system(size:14,weight:.semibold)).offset(y:-4).frame(minHeight:44).contentShape(Rectangle())
+            }.accessibilityIdentifier("Firmware library")
+            Spacer(minLength:4)
+            if instrument.busy {ProgressView().controlSize(.mini).offset(y:-4)}
+            Text(playbackStatus).font(.system(size:12)).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth:130,alignment:.trailing).offset(y:-4).accessibilityIdentifier("Playback status")
+            Button {instrument.playbackWanted ? instrument.pause() : instrument.resume();ControlHaptics.shared.button()} label:{Image(systemName:instrument.playbackWanted ? "pause.fill" : "play.fill").offset(y:-4).frame(width:44,height:44).contentShape(Rectangle())}
+                .disabled(instrument.selected == nil || (instrument.busy && !instrument.playbackWanted)).accessibilityLabel(instrument.playbackWanted ? "Pause instrument" : "Resume instrument")
+            Button {instrument.toggleMute();ControlHaptics.shared.button()} label:{Image(systemName:instrument.muted ? "speaker.slash" : "speaker.wave.2").offset(y:-4).frame(width:44,height:44).contentShape(Rectangle())}.accessibilityIdentifier("Mute audio").accessibilityLabel(instrument.muted ? "Unmute audio" : "Mute audio").accessibilityValue(instrument.muted ? "Muted" : "Sound on")
+            Button {choosingFinish=true;ControlHaptics.shared.button()} label:{
+                HStack(spacing:0) {Circle().fill(finish.swatch).frame(width:16,height:16);Circle().fill(finish.secondarySwatch).frame(width:16,height:16).padding(.leading,-7)}.offset(y:-4).frame(width:44,height:44).contentShape(Rectangle())
+            }.accessibilityLabel("Panel color").accessibilityValue(finish.rawValue)
+            Button {about=true;ControlHaptics.shared.button()} label:{Image(systemName:"info.circle").offset(y:-4).frame(width:44,height:44).contentShape(Rectangle())}.accessibilityLabel("About")
+        }.buttonStyle(.plain).foregroundStyle(finish.accentColor).tint(finish.accentColor).padding(.horizontal,4).frame(height:44)
+            // Keep the 44pt targets; their last 12pt extend into the panel’s
+            // noninteractive top rim. The header sits above it for hit testing.
+            .frame(height:32,alignment:.top)
     }
 }
+
+#if FM1_RESEARCH
+private struct WebEngineSurface:UIViewRepresentable {
+    let webView:WKWebView
+    func makeUIView(context:Context)->WKWebView {webView}
+    func updateUIView(_ uiView:WKWebView,context:Context) {}
+}
+
+#endif
 
 private struct LicenseNoticeView: View {
     let title: String
     let resource: String
+    let finish:PanelFinish
+    @State private var notice:String?
     var body: some View {
         ScrollView {
-            Text(Bundle.main.url(forResource:resource,withExtension:nil).flatMap {try? String(contentsOf:$0)} ?? "License notice unavailable")
-                .font(.caption).textSelection(.enabled).frame(maxWidth:.infinity,alignment:.leading).padding()
-        }.navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+            if let notice {
+                Text(notice).font(.caption).textSelection(.enabled).accessibilityIdentifier("License text").frame(maxWidth:.infinity,alignment:.leading).padding()
+            } else {ProgressView().padding()}
+        }.background(FM1SurfaceTheme(finish:finish).background).navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+        .task(id:resource) {
+            let resource=resource
+            let text=await Task.detached(priority:.userInitiated) {
+                Bundle.main.url(forResource:resource,withExtension:nil).flatMap {try? String(contentsOf:$0)} ?? "License notice unavailable"
+            }.value
+            if !Task.isCancelled {notice=text}
+        }
+    }
+}
+
+private struct EnlargedDisplayView:View {
+    @ObservedObject var frames:InstrumentDisplayState
+    let finish:PanelFinish
+    let done:()->Void
+    var body:some View {
+        VStack(spacing:18) {
+            HStack {Text("Display").font(.headline);Spacer();Button("Done",action:done).frame(minWidth:44,minHeight:44)}
+                .padding(.horizontal,14).fm1Glass(finish:finish)
+            if let image=frames.screen {Image(decorative:image,scale:1).resizable().interpolation(.none).aspectRatio(contentMode:.fit)}
+            else {ContentUnavailableView("No instrument playing",systemImage:"display",description:Text("Choose a release from the firmware library to see its display."))}
+        }.padding(24).background(FM1SurfaceTheme(finish:finish).background).tint(finish.accentColor)
     }
 }

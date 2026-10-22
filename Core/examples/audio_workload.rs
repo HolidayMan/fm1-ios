@@ -52,7 +52,7 @@ fn main() {
         let mut render_seconds = 0.;
         let mut total_render = 0.;
         let started = Instant::now();
-        println!("backend={}", instrument_backend(m));
+        println!("backend={} native_kind={}", instrument_backend(m), instrument_native_kind(m));
         while frames < 44100 * seconds {
             let ms = frames as u64 * 1000 / 44100;
             while event < events.len() && events[event].0 <= ms {

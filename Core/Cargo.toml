@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 [lib]
 crate-type = ["staticlib", "rlib"]
+[features]
+default = ["research"]
+research = ["dep:fm1-core", "dep:fm1-soc"]
+store-native = []
+
 [dependencies]
-fm1-core = { path = "../Vendor/fm1-core" }
-fm1-soc = { path = "../Vendor/fm1-soc" }
+fm1-core = { path = "../Vendor/fm1-core", optional = true }
+fm1-soc = { path = "../Vendor/fm1-soc", optional = true }

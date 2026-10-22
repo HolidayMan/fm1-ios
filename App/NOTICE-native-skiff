@@ -1,0 +1,33 @@
+Skiff 1.4 compiled native source engine
+
+Skiff by illuminus5, based on Felucca by Leo Kuroshita (@kurogedelic),
+Hugelton Instruments. GPL-3.0-only.
+https://github.com/illuminus5/skiff
+Tag v1.4, commit c01fa1ed619266d770ea6552b153612e1b77d0a9.
+
+The original application, DSP, audio ISR, UI, project and pattern storage are
+compiled from pinned public sources. Hardware I/O is adapted from Skiff's own
+browser host. Serialized sample addressing is adapted for a 64-bit host; mutable
+state and full 1 MiB flash are independent for every instance. USB device audio,
+USB/editor protocol, TRS MIDI, hardware second-core execution and PLL switching
+are not supplied by this adapter. No hardware parity or App Store approval is
+claimed.
+
+Felucca's Hugelton Sample Pack and JIANT-derived DRUM-X retain GPL-3.0-only.
+DaisySP/Rings models and Fukiai icons retain MIT; msfa/Dexed FM core retains
+Apache-2.0; fonts retain SIL OFL 1.1; VSCO-2/VCSL samples retain CC0.
+Full source attribution, component license texts and BREAK/FUNK provenance are
+bundled in THIRD-PARTY-native-skiff. GNU GPL text is in LICENSE-native-sloop.
+
+BREAK/FUNK are audio generated using YuE2. Skiff's upstream records their
+creator/provenance and asserts the model's individual-creator output permission.
+This private build does not establish independent commercial redistribution or
+third-party rights clearance for those generated loops. No YuE2 model weights
+or model code are included. Preserve this release limitation and the complete
+provenance before any external distribution.
+
+Per-instance LLVM state tooling derives from Virtual FM-1, GPL-3.0:
+https://github.com/jbschooley/Virtual-FM-1
+Commit c52668953231655046ee142d2b3ab4fd2c8ca0b4.
+Native integration remains a private local prototype; no source or binary has
+been published externally by this task.

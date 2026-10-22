@@ -1,0 +1,48 @@
+Additional exact source-native community engines
+
+Felucca 1.6.1, GPL-3.0-only, Leo Kuroshita / Hugelton Instruments.
+https://github.com/hugelton/Felucca commit a53ecf428c29c780108fd70a31b71a32a6b5c313
+The MIT Felucca-Engines submodule retains its own license.
+
+X0X 1.1.0, GPL-3.0-only, Charles Vestal, after Felucca.
+https://github.com/charlesvestal/fm1-x0x commit 27f6fac7e07ce97b5de158b45aec99f59a9e23fd
+Whole upstream application, sequencer and real sound-engine source are compiled;
+its hardware platform is adapted to the iOS worker, physical flash and panel.
+
+Melodee 1.4.5, GPL-3.0-only, Kerem Kilic / Ellic Studio, after Felucca.
+https://github.com/keremimo/melodee commit 398ada1e09d864c12f3b778a43e45c7c2a8031b8
+PocketFM uses a derived INIT soundset: the 64 Casio CZ-1 and 200 Sequential
+Prophet factory programs, packed tables and names are excluded from compilation.
+Each of these two engines offers one original PocketFM INIT program. Existing
+user-imported sounds, native user slots and project wire formats are preserved.
+The hardware package identifies the source version but does not initialize this
+native engine's NOR; its embedded factory data are not executed or loaded.
+Upstream source/resources are pinned; derived source/resource and compiled-object
+exclusion checks are recorded by Core/native/family.lock.json and the builder.
+
+Felucca/Melodee source wrappers retain Virtual FM-1 attribution and GPL-3.0.
+Complete upstream licensing notices are retained in Core/native/licenses/.
+Per-release generated header hashes and exact source pins: family.lock.json.
+
+SLOOP attribution remains in the separate bundled NOTICE-native-sloop.
+
+FoMni 0.4, GPL-3.0-only, Charles Vestal, after X0X and Felucca.
+https://github.com/charlesvestal/fm1-fomni commit 6ecd227013cc18def0e89d035b3760eb268b342b
+Its exact portable whole-app host, DSP and UI compile to native code. The host
+object buffers are adapted to the original physical NOR storage.c A/B records.
+Chordian rhythms, waves, drum sounds and envelopes by Jan125 retain CC0 1.0;
+Barlow Semi Condensed and Terminus fonts retain SIL OFL 1.1.
+
+Jangada 1.0.1, GPL-3.0-only, zednaked, after Felucca / Leo Kuroshita.
+https://github.com/zednaked/jangada commit 46e6c2c2ed94b609918aa6f5f7381fac915ffc45
+The actual application, DSP, panel UI and physical NOR storage are compiled;
+source main-loop/storage policies remain, with serial native host I/O.
+MSFA retains Apache-2.0; DaisySP, Rings and Fukiai retain MIT; Inter Tight and
+Terminus retain SIL OFL 1.1; Versilian hand percussion retains CC0 1.0.
+Upstream reserves the Hugelton Sample Pack rights pending published terms.
+Local native compilation grants no additional distribution rights to those assets.
+
+FoMni/Jangada source, resource, notice and package hashes: expansion.lock.json.
+Full component notices remain in Core/native/licenses/fomni and /jangada.
+These local results do not establish App Store acceptance or redistribution rights.
+Skiff attribution remains in its separate NOTICE-native-skiff.

@@ -3,7 +3,7 @@ import XCTest
 
 final class AudioMetricsTests: XCTestCase {
     func testEngineNoticesAreBundled() throws {
-        for name in ["LICENSE-fm1-emu", "NOTICE-native-sloop", "LICENSE-native-sloop"] {
+        for name in ["LICENSE-fm1-emu", "NOTICE-native-sloop", "LICENSE-native-sloop", "NOTICE-native-family", "NOTICE-native-official-preview", "LICENSE-native-official-preview", "THIRD-PARTY-native-official-preview"] {
             let url = try XCTUnwrap(Bundle.main.url(forResource: name, withExtension: nil), "Missing bundled notice: \(name)")
             XCTAssertGreaterThan(try String(contentsOf: url).count, 50)
         }

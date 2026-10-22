@@ -23,3 +23,5 @@ __pycache__/
 *.xcresult/
 *.wav
 *.pcm
+*.p8
+App/WebEngine/engine.wasm

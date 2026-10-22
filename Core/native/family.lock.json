@@ -1,0 +1,182 @@
+{
+  "schema_version": 1,
+  "native_api_version": 1,
+  "wrapper_origin": {
+    "source": "https://github.com/jbschooley/Virtual-FM-1",
+    "commit": "c52668953231655046ee142d2b3ab4fd2c8ca0b4",
+    "files": [
+      "engines/felucca/felucca_core.c",
+      "engines/melodee/melodee_core.c"
+    ]
+  },
+  "selection": {
+    "metric": "GitHub stargazers, bounded comparison of public FM-1 source repositories",
+    "observed_date": "2026-10-18",
+    "stars": {
+      "sloop": 546,
+      "felucca": 531,
+      "x0x": 183,
+      "melodee": 116,
+      "fomni": 65,
+      "jangada": 31
+    }
+  },
+  "generation_runtime": {
+    "Pillow": "13.0.0",
+    "freetype2": "2.14.3",
+    "raqm": "0.11.0"
+  },
+  "firmwares": [
+    {
+      "id": "felucca",
+      "tag": "v1.6.1",
+      "commit": "a53ecf428c29c780108fd70a31b71a32a6b5c313",
+      "source": "https://github.com/hugelton/Felucca",
+      "prefix": "fel_",
+      "package": {
+        "id": "felucca",
+        "version": "1.6.1",
+        "size": 610090,
+        "sha256": "dff3a38f7e5b9833e15aba322558c9485e9e422e3ff813c616c91b3584a2d909",
+        "url": "https://github.com/hugelton/Felucca/releases/download/v1.6.1/felucca-1.6.1.fwsc",
+        "source": "https://github.com/hugelton/Felucca/tree/v1.6.1"
+      },
+      "generated_headers_sha256": {
+        "felucca_fm6.h": "d1859b8194443ecbe099505909d6ea4db866d919100c81d738bb06d56004f791",
+        "felucca_samples.h": "d72405f100494dce4c3bff53de584423b0ab96cf9b196a85487b13206ae032bc",
+        "felucca_tables.h": "a975289289c52b9f9fd2ff985a147b199f8a3afa9fb416e95f99cb83131993cb",
+        "ui_fonts.h": "ccec7fcead654ccd6a279f56db4d74e4e62f275e92a13714006788568b43ed54",
+        "ui_icons.h": "85947fe4a0307f806613870ad117c1fe4d4c7256786843ea88d14d104c7687aa",
+        "ui_keycaps.h": "e07d6ffd60f98fc24ebe02025f09a40668f33bacd91c7f4a04bb4b11112995c8",
+        "ui_palettes.h": "e87e29243c6129e8bd238cae5b185ca0357483f6a1787f78f63ecf54ce8dad05"
+      },
+      "submodules": {
+        "firmware/engines": "c46e0086f69bdc26df1cd144dca9e683cc4531dd"
+      }
+    },
+    {
+      "id": "x0x",
+      "tag": "v1.1.0",
+      "commit": "27f6fac7e07ce97b5de158b45aec99f59a9e23fd",
+      "source": "https://github.com/charlesvestal/fm1-x0x",
+      "prefix": "x0x_",
+      "package": {
+        "id": "x0x",
+        "version": "1.1.0",
+        "size": 609684,
+        "sha256": "a0c29deb930c65f1d40b5691b7d673f861418b438b7e65027cb9c671e6f44f5b",
+        "url": "https://github.com/charlesvestal/fm1-x0x/releases/download/v1.1.0/x0x-1.1.0.fwsc",
+        "source": "https://github.com/charlesvestal/fm1-x0x/tree/v1.1.0"
+      },
+      "generated_headers_sha256": {
+        "ann_words.h": "8391906881bf35cba6a8efd6cd330920a92a3a1820da7b1e1e943965e5fa7b6d",
+        "felucca_font.h": "a34e7985d7912168cfaa5abdc097268dfaf7de6b9cebeb3ec0fbb80aa2d2e554",
+        "x0x_break_bank.h": "952a1949f20fe450944b087de2bd211b7b17ff2ee815b636cf0a8e7cf5dbe673",
+        "x0x_drum_samples.h": "be1c1a9701c4eb264c0cc367e8b9ffadba51537e9d22cfaeaaee8ea6c1075094",
+        "x0x_drum_tables.h": "c9cbca716373b2c8408fc09997106cffc9785cad33b6ee8fdd8df6fe6ced8199"
+      }
+    },
+    {
+      "id": "melodee",
+      "tag": "v1.4.5",
+      "commit": "398ada1e09d864c12f3b778a43e45c7c2a8031b8",
+      "source": "https://github.com/keremimo/melodee",
+      "prefix": "mel_",
+      "package": {
+        "id": "melodee",
+        "version": "1.4.5",
+        "size": 610545,
+        "sha256": "a18f40d6f8c8087b25f115ab11286f85c7f04383de836227c463c6ce4745ce20",
+        "url": "https://github.com/keremimo/melodee/releases/download/v1.4.5/melodee-1.4.5.fwsc",
+        "source": "https://github.com/keremimo/melodee/tree/v1.4.5"
+      },
+      "generated_headers_sha256": {
+        "melodee_cz1.h": "e8720f8911c3f8f8a9c9a243baac93878ae8dc598ceb6d5dae697da4e8568f43",
+        "melodee_fm6.h": "d1859b8194443ecbe099505909d6ea4db866d919100c81d738bb06d56004f791",
+        "melodee_prophet_factory.h": "0082e7a9362aff2af69e0933cd3919a437e492eb9b2197a4abc126ae6ea57442",
+        "melodee_tables.h": "e0a1d675787fe198e8728ba738b3152d30ff579d6497a3e4a0f03558758ce64b",
+        "ui_fonts.h": "1c27f43fb3da57252fbdff6ca21b69a2aa2c5ef0f89b72afefbea2bd4a9f820b",
+        "ui_icons.h": "909463906790abbc526421f3c1fc9503dfb3f25d0f9f78e30d38ff80f303563b",
+        "ui_keycaps.h": "3ee8f5703b443d0d2025db53c7a6472f7d1dfb86d448b46e990de52b734ad5a1",
+        "ui_palettes.h": "f4e889ee862c9c424941416c00fc7ee7b294c89e9b166bd7c1968657a6397bca",
+        "x0x_drum_tables.h": "d109515a203b4c456e8e8e7378a8158d3f07580bc2bec9c17345305fd34874dc"
+      },
+      "notices_sha256": {
+        "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+        "LICENSING.md": "ed933ab932e8c6345d1943e3eb290f53e41a2b6b75debd73c049e87cf5b772e4",
+        "LICENSES/Apache-2.0-msfa.txt": "27dd23b62bc11d0806562397a1e782f86fc7dcacd1ba7a1b58d3c78a54795e62",
+        "LICENSES/Apache-2.0.txt": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+        "LICENSES/BSD-3-Clause-uPD933.txt": "57747baee9c753ad902ebfcd95a50b131b6d3cc967045d87b69169c807bcde4a",
+        "LICENSES/MIT-DaisySP.txt": "7fa755aede5b5c2a8131a6db692f5818ed8d21dcbe632f41618af03b6d698126",
+        "LICENSES/MIT-Fukiai.txt": "fddeab17d69ab85a8e9c593beb0e93c279a9d74ff9504e1804bba123cb63e08e",
+        "LICENSES/MIT-Rings.txt": "60cd097bf74b2a3a0cadadeddec5d80b6806f83039e6ce9cb0ba511a1f17a2be",
+        "LICENSES/OFL-InterTight.txt": "50240ab035cf1b6b3307940235481d515c4b6de3ab1fa843dbe59e7892cb9d58",
+        "LICENSES/OFL-Rubik.txt": "472cbe7c25441df63e9c7864b43eb3c0f4b3df950c66a76224e6cfe1eae843fb",
+        "assets/resid/README.md": "53ce0ad14fa4cb0a73b3aa1a06d23003055cbc3e9470b8c562b8ec5c0156a961",
+        "assets/cz1-factory/README.md": "3e71f5fe44512c3766f17f3ff9db9a95a3b82e8b8b5645aba8e7c3ca6f5fa4e9",
+        "assets/prophet5-factory/README.md": "79aa8ec8b3760221e14020a51fe052e43a63d7cd02727abe4197e3c85598019e"
+      },
+      "licensing_notes": [
+        "GPL-3.0-only code with retained Apache/MIT/BSD/OFL and reSID GPL-2.0-or-later attribution.",
+        "Casio CZ-1 and Sequential Prophet factory program data are excluded from this derived soundset and native initial flash. Public synthesis code and native user/import/save formats remain; PocketFM original INIT programs replace the two factory browsers."
+      ],
+      "derived_soundset": {
+        "id": "pocketfm-init-v1",
+        "display_name": "PocketFM INIT bank",
+        "additional_factory_programs": {
+          "cz": 0,
+          "prophet": 0
+        },
+        "excluded_generated_headers": [
+          "melodee_cz1.h",
+          "melodee_prophet_factory.h"
+        ],
+        "initial_flash": "Erased native NOR; hardware-package instructions and factory program data are not copied into initial state. Existing saves/imported tones remain separate user data.",
+        "upstream_files_sha256": {
+          "eng_cz.c": "c7dbc2d1542e03e91f57b8a80a5601fe75563892c595b05a7f99838c88cd2f4a",
+          "eng_prophet_test.c": "fb1a861c21aa1417255057f6d79f8cdb4bc1a6cbf221971fef89643691c21c21",
+          "prophet_user.c": "23c9a64f716536e2eac3ffa3f2f80f065de5f775be1a31188c8f6bb4a5285d4a",
+          "browse.c": "90ea1f14891266ece73d919d70ff7b24db6c3859af6fa230e1af83bd51712bc9",
+          "cz_patch.h": "79beb80354fe420991493ffa2f56e8a8bcc56fc8328551ce6c7522dcc67f3926",
+          "prophet_patch.c": "22d11c201230d897f720ed52d87df58ce80ae8eccf56d2504f634fe8206c2e57"
+        },
+        "derived_files_sha256": {
+          "eng_cz.c": "9ad4185503083408bfe9fbc060a9f3690689b4173b02ea6a28acc46c349d4d9d",
+          "eng_prophet_test.c": "6512782ac3300af3cc75876982801b6424bd18a26359c4ea0a04d096cf536e92",
+          "prophet_user.c": "d7a3e55fd510fde133c9120ef17b517795000a6079da19a6173179a79596e377",
+          "browse.c": "b0fd35a23bd42b605395f5dc43ac67d64d3183a83597e5be33c3d16c04f356a7",
+          "cz_patch.h": "395a876b9db784627236170fa495cdfaee14da7d12f5cf5c188d5731b92ae152",
+          "prophet_patch.c": "c04f9adba5570824a27906b07eba5baa4b6e4c8da674e5ceae4642abc0307cda",
+          "melodee_init_bank.h": "9b3ca84a1954fdffe5767bcbc35e5e8a99ec155b293b61e420063172cbafef99"
+        },
+        "excluded_payload_fingerprints": {
+          "CZ_DICT": {
+            "bytes": 144,
+            "prefix_sha256": "ba943fadb835865030a9b469588b24b5603ece16f57740e59e281e3f10b35023",
+            "sha256": "0a5ab39cd21fd031264ec3dfe1382028d7de2155894c9e6201b738f8bb87b88e"
+          },
+          "CZ_LZ": {
+            "bytes": 5115,
+            "prefix_sha256": "f7a27bc1bb58d2ec64f180b7b1e58fe814fddb468480c0244e29ab63dba88e59",
+            "sha256": "92a3e06c7eacdecc296017384d2fdb376a506fe9164b0f4d3cb19ff370fdff35"
+          },
+          "P5_FBASE": {
+            "bytes": 133,
+            "prefix_sha256": "226fe3219ba9f459c34971f2488aa642df6aa7fead3fa12c30bcbe8daa841dd0",
+            "sha256": "c4c26ec40828197a32cb8d55b07ca71115f25264743f7e1597afc29671538a9b"
+          },
+          "P5_FWIDTH": {
+            "bytes": 133,
+            "prefix_sha256": "a94fffc036cdb106cca927af4323f6248c0882befdde3aeab435919ce0f8cb16",
+            "sha256": "aaaa64205e6c42f1c7b18f71ccee7c9536adee7d9bf5ba0de24d692e0d223de9"
+          },
+          "P5_FPACK": {
+            "bytes": 11000,
+            "prefix_sha256": "43bcb211928b703331fc711adc91998facfc330aaba43583bb416418f471fe03",
+            "sha256": "611e80b269a0a5768c4d8e8b77d03412628c29f4886e7695a269740943d5d3f6"
+          }
+        }
+      }
+    }
+  ]
+}

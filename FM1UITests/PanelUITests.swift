@@ -2,7 +2,7 @@ import XCTest
 
 final class PanelUITests:XCTestCase {
     func testLandscapeControlsFillPhoneAndColorsPersist() {
-        let app=XCUIApplication();app.launch()
+        let app=XCUIApplication();app.launchArguments += ["-instrumentHeaderCollapsed","NO"];app.launch()
         XCUIDevice.shared.orientation = .landscapeLeft
         let home=app.buttons["HOME"]
         XCTAssertTrue(home.waitForExistence(timeout:10))
@@ -38,19 +38,20 @@ final class PanelUITests:XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[selected],timeout:60),.completed,"The downloaded firmware must actually become selected")
         XCTAssertTrue(app.buttons["Pause instrument"].waitForExistence(timeout:15))
     }
-    func testCatalogueDownloadStockAndFelucca() {
-        let app=XCUIApplication();app.launch()
+    func testCatalogueDownloadSloopAndFelucca()throws {
+        guard ProcessInfo.processInfo.environment["FM1_TEST_DOWNLOADS"] == "1" else {throw XCTSkip("Network download test is opt-in") }
+        let app=XCUIApplication();app.launchArguments += ["-instrumentHeaderCollapsed","NO"];app.launch()
         XCUIDevice.shared.orientation = .landscapeLeft
         app.buttons["Firmware library"].tap()
         let initialSearch=app.searchFields.firstMatch
-        XCTAssertTrue(initialSearch.waitForExistence(timeout:5));initialSearch.tap();initialSearch.typeText("Stock\n")
-        let stock=app.buttons["Download Stock"]
-        XCTAssertTrue(reveal(stock,in:app))
-        stock.tap()
-        waitForFirmware("Stock-V15",in:app)
+        XCTAssertTrue(initialSearch.waitForExistence(timeout:5));initialSearch.tap();initialSearch.typeText("SLOOP\n")
+        let sloop=app.buttons["Download SLOOP"]
+        XCTAssertTrue(reveal(sloop,in:app))
+        sloop.tap()
+        waitForFirmware("SLOOP-2.7.1",in:app)
         app.buttons["C4"].press(forDuration:0.5)
         app.buttons["HOME"].tap()
-        let stockImage=XCTAttachment(screenshot:XCUIScreen.main.screenshot());stockImage.name="iPhone 12 catalogue stock boot";stockImage.lifetime = .keepAlways;add(stockImage)
+        let sloopImage=XCTAttachment(screenshot:XCUIScreen.main.screenshot());sloopImage.name="iPhone 12 catalogue SLOOP boot";sloopImage.lifetime = .keepAlways;add(sloopImage)
         app.buttons["Firmware library"].tap()
         let search=app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout:5));search.tap();search.typeText("Felucca\n")

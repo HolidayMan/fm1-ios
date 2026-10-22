@@ -1,0 +1,24 @@
+FM1 Open V14 source preview backend
+
+This backend compiles M-VAVE's public browser instrument source as native C.
+It is a preview of FM1 Open, not the exact compiled hardware firmware engine.
+The proprietary FM1 binary SDK is neither linked nor included. Voice limits,
+demo samples and hardware integration can differ from the physical firmware.
+
+Application and public browser engine: Copyright (c) 2026
+珠海笙科智能科技有限公司 (M-VAVE), GPL-3.0-only with the FM1 SDK linking
+exception. Source: https://github.com/m-vave/fm1_open
+Commit 4d266850f8a46bd5154a0d495c1f60317156c9f7 (V14).
+The native host adapter is modified for per-instance state, independent logical
+flash, allocation ownership, native panel events and the iOS audio format.
+
+Open303 / DaisySP / Plaits / stmlib / emu2149 / SEA components retain MIT
+terms. MSFA / Dexed FM components retain Apache-2.0. Company-authored FX,
+arrangements and synthesized demo samples are credited to M-VAVE.
+Full original notices and license: LICENSE-native-official-preview and
+THIRD-PARTY-native-official-preview. The separate proprietary SDK terms in
+the latter document do not imply that any proprietary SDK is used here.
+
+The LLVM per-instance state tooling derives from Virtual FM-1, GPL-3.0:
+https://github.com/jbschooley/Virtual-FM-1
+Commit c52668953231655046ee142d2b3ab4fd2c8ca0b4.

@@ -3,16 +3,22 @@
   "native_api_version": 1,
   "sloop": {
     "source": "https://github.com/isod89/sloop-fm1",
-    "tag": "v2.7.1",
-    "commit": "4ec1ac829fd2bdf2c571ea215fb3d62477d01220",
+    "tag": "v2.8",
+    "commit": "b77bf55e3bf804665b8f5dffb5955bd8443311f0",
     "generated_headers_sha256": {
       "felucca_drumkits.h": "fdbd0af52099ecfc62c1f0c94927dd469a3570355c9fec47e9d68a34444b8168",
       "felucca_fm6.h": "d1859b8194443ecbe099505909d6ea4db866d919100c81d738bb06d56004f791",
       "felucca_font.h": "e365e761aefe2a33b2832ed69cd35a02ac661d6f8bfb52fc3071e653cd5aae02",
       "felucca_icons.h": "a38710d0e8bacaa53528e95687d44da69d6e24134d6f2ee92ace02df6559d567",
-      "felucca_samples.h": "b7e249b581848a25cadb76951d08bb1003d83781d74f627f3f5a0e8ffadcc1e1",
+      "felucca_samples.h": "0dcceacd6f477e7a3eab89cbcb7e5a76a4cdd434d5f4091f5d90edbad2855f96",
       "felucca_tables.h": "28f7783cd74c6d9e6dbcd21913030e199ffa8ba5f5a24689da406c2c51bc40b1",
       "sloop_logo.h": "037215e53a67e631ea30c5dc84e5e4e8ba98ce3ca479e95c1c9809bef9d6f4b8"
+    },
+    "package": {
+      "path": "docs/firmware/sloop-2.8.fwsc",
+      "size": 610035,
+      "sha256": "fb69b4311790eb7ec09498be16ae2b71bd681840e221c0d8cfdb26fb5f9a2928",
+      "url": "https://github.com/isod89/sloop-fm1/releases/download/v2.8/sloop-2.8.fwsc"
     }
   },
   "wrapper_origin": {

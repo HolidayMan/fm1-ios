@@ -1,4 +1,4 @@
-/* sloop_core.c -- SLOOP 2.7.1 (engines/sloop/upstream, GPL-3.0-only; isod89, after Felucca by Leo
+/* sloop_core.c -- SLOOP 2.8 (engines/sloop/upstream, GPL-3.0-only; isod89, after Felucca by Leo
  * Kuroshita / Hügelton Instruments), the whole firmware, as a library the plugin can drive: a
  * virtual FM-1 running Sloop, with its sound, sequencer, arranger, screen, front panel, projects,
  * user presets and editor protocol.
@@ -272,6 +272,7 @@ static void felucca_init(void)
     song.g[G_DRMAP] = midi_set[7];
     song.g[G_CLKOUT] = midi_set[9];
     song.g[G_RMCH] = midi_set[8];
+    song.g[G_FXFADE] = fxfade;               /* 2.8 restores punch-in fade from MIDI settings. */
     layers_init();
     go_home();
     ui.force = 1;
@@ -713,8 +714,10 @@ int32_t FEL(object_get)(uint32_t id, uint8_t *out, uint32_t max)
 {
     const uint8_t *p;
     uint32_t len;
-    if (id == 0u)
+    if (id == 0u) {
+        if(song_kept)return -1; /* Stop SONG first: its working loop is parked separately. */
         proj_capture((project_t *)ED_BK_RAW);
+    }
     else if (id == 1u)
         persist_fill(&ed_bk_set);
     else if (id == 10u)                  /* (2.6: the MIDI LEARN map and GLO > MIDI; no bytes while the default) */
@@ -743,6 +746,16 @@ uint32_t FEL(object_put)(uint32_t id, const uint8_t *data, uint32_t len)
         rec_wait = 0;
     }
     memcpy(ED_BK_RAW, data, len);
+    /* The editor omits a default MIDI object. An explicit empty typed restore
+     * must clear an older nondefault map rather than inherit it from baseline. */
+    if(id==10u&&!len) {
+        const uint8_t def[10]=MIDI_SET_DEF;
+        memset(ED_BK_RAW,0,MIDI_PART);
+        uint8_t *tail=ED_BK_RAW+2u*ML_N;
+        tail[0]=def[0];tail[1]=def[1];tail[2]=def[2];
+        tail[3]=(uint8_t)(def[3]|def[4]<<7);tail[4]=def[5];tail[5]=def[6];
+        tail[6]=(uint8_t)(def[7]|def[9]<<1);tail[7]=def[8];len=MIDI_PART;
+    }
     ed_bk_id = (uint8_t)id;
     ed_bk_len = len;
     ed_bk_pos = len;
@@ -806,3 +819,43 @@ uint32_t FEL(workload_metrics)(uint64_t *out, uint32_t capacity)
 }
 
 uint32_t FEL(ui_frames)(void) { return ui.frame; }
+
+/* Typed file operations. Host calls these only on a bound, serialized instance;
+ * imports target a disposable candidate until every component validates. */
+int32_t FEL(file_sample_read)(uint32_t slot,uint8_t *out,uint32_t capacity) {
+    if(slot>=SMP_USER_SLOTS)return -1;
+    if(!out||capacity<SMP_USER_SIZE)return (int32_t)SMP_USER_SIZE;
+    memcpy(out,host_flash+SMP_USER_OFF(slot),SMP_USER_SIZE);return (int32_t)SMP_USER_SIZE;
+}
+uint32_t FEL(file_sample_write)(uint32_t slot,const uint8_t *bytes,uint32_t size) {
+    if(slot>=SMP_USER_SLOTS||!bytes||size!=SMP_USER_SIZE)return 1;
+    if(song.playing||transport_req||!audio_quiet())return 3;
+    smp_user_hdr_t h;memcpy(&h,bytes,sizeof h);
+    if(h.magic!=0xffffffffu) {
+        if(h.magic!=SMP_USER_MAGIC||h.version!=1||!h.nz||h.nz>16||h.data_len>SMP_USER_SIZE-SMP_USER_DATA)return 2;
+        if(st_crc32(bytes+SMP_USER_DATA,h.data_len)!=h.crc)return 2;
+        for(uint32_t i=0;i<h.nz;i++)if(!smp_zone_ok(&h.zone[i],h.data_len))return 2;
+    } else {
+        for(uint32_t i=0;i<SMP_USER_DATA;i++)if(bytes[i]!=255)return 2;
+    }
+    memcpy(host_flash+SMP_USER_OFF(slot),bytes,SMP_USER_SIZE);
+    smp_user_scan(slot);return 0;
+}
+uint32_t FEL(file_arrangement_write)(const uint8_t *bytes,uint32_t size) {
+    if(!bytes||size<11||bytes[10]<1||bytes[10]>ARR_STEPS||size!=11+2u*bytes[10]||bytes[3]>1||bytes[9]>1||bytes[8]>15||bytes[0]>4)return 1;
+    if(song.playing||transport_req||srec)return 3;
+    uint32_t rc=(uint32_t)FEL(arr_chain)(bytes+11,bytes[10],bytes[9]);if(rc)return rc;
+    arrangement_enabled=bytes[3];song.solo=bytes[8];live_sec=(int8_t)bytes[0]-1;live_req=-1;
+    settings_save();return 0;
+}
+
+/* Candidate-only durable working-object commit, using the upstream A/B store
+ * and its CRC/generation rules rather than waiting for the idle autosave timer. */
+uint32_t FEL(file_commit)(void) {
+    if(transport_req==2u){seq_stop();transport_req=0;song.rec=0;rec_wait=0;}
+    if(song.playing||transport_req||srec)return 3;
+    proj_capture(&autosave_buf);
+    if(!flash_ok||st_save(OBJ_AUTOSAVE,&autosave_buf,sizeof autosave_buf))return 4;
+    autosave_hash=autosave_buf.sum;autosave_ms=fm1_ms;
+    settings_save();return 0;
+}

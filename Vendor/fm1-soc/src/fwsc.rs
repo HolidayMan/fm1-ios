@@ -24,7 +24,11 @@ fn crc16(buf: &[u8]) -> u16 {
     for &b in buf {
         crc ^= (b as u16) << 8;
         for _ in 0..8 {
-            crc = if crc & 0x8000 != 0 { (crc << 1) ^ 0x1021 } else { crc << 1 };
+            crc = if crc & 0x8000 != 0 {
+                (crc << 1) ^ 0x1021
+            } else {
+                crc << 1
+            };
         }
     }
     crc
@@ -49,7 +53,11 @@ pub struct Head {
 }
 
 fn head(b: &[u8], o: usize) -> Head {
-    let name = b[o + 16..o + 32].iter().take_while(|&&c| c != 0).map(|&c| c as char).collect();
+    let name = b[o + 16..o + 32]
+        .iter()
+        .take_while(|&&c| c != 0)
+        .map(|&c| c as char)
+        .collect();
     Head {
         name,
         offset: u32le(b, o + 4) as usize,
@@ -98,7 +106,9 @@ pub fn container(file: &[u8]) -> (usize, String) {
     while end > 0 && marker(end - 1) == Some(0x7d) {
         end -= 1;
     }
-    let identity = (0..end).filter_map(|i| marker(i).map(|m| m.wrapping_sub(i as u8 + 1) as char)).collect();
+    let identity = (0..end)
+        .filter_map(|i| marker(i).map(|m| m.wrapping_sub(i as u8 + 1) as char))
+        .collect();
     (n, identity)
 }
 
@@ -134,7 +144,10 @@ fn raw_flash_n(file: &[u8], blocks: usize) -> Result<Vec<u8>, String> {
             let len = u32le(&e, 12) as usize;
             let mut stream = hdr.clone();
             stream.extend_from_slice(&file[blocks * 0x30..]);
-            return stream.get(off..off + len).map(|s| s.to_vec()).ok_or("truncated package".into());
+            return stream
+                .get(off..off + len)
+                .map(|s| s.to_vec())
+                .ok_or("truncated package".into());
         }
     }
     Err("no flash image in the package".into())
@@ -161,7 +174,10 @@ fn unscramble(buf: &mut [u8], from: usize, len: usize, base: usize, key: u16) {
     let mut i = 0;
     while i < len {
         let n = 32.min(len - i);
-        unmask(&mut buf[from + i..from + i + n], key ^ ((from + i - base) >> 2) as u16);
+        unmask(
+            &mut buf[from + i..from + i + n],
+            key ^ ((from + i - base) >> 2) as u16,
+        );
         i += 32;
     }
 }
@@ -230,7 +246,13 @@ fn unpack_n(file: &[u8], blocks: usize) -> Result<Unpacked, String> {
     if !dir.iter().any(|h| h.name == "app.bin") {
         return Err("no app.bin in the app area".into());
     }
-    Ok(Unpacked { identity: String::new(), raw, xip: flash[area..].to_vec(), area, dir })
+    Ok(Unpacked {
+        identity: String::new(),
+        raw,
+        xip: flash[area..].to_vec(),
+        area,
+        dir,
+    })
 }
 
 /// The SMK-37's factory calibration record (USRTRIM, flash 0xC1000; fm1-to-smk37 docs/01, 2.1):
@@ -267,7 +289,15 @@ const SETTINGS_LEN: usize = 59;
 
 /// One DX7 operator, packed (17 bytes): EG rates and levels, keyboard scaling off, detune 7
 /// (none), key-velocity sensitivity, output level, frequency (ratio: coarse 0 = 0.5, fine).
-fn op(level: u8, coarse: u8, fine: u8, detune: u8, rates: [u8; 4], levels: [u8; 4], vel: u8) -> [u8; 17] {
+fn op(
+    level: u8,
+    coarse: u8,
+    fine: u8,
+    detune: u8,
+    rates: [u8; 4],
+    levels: [u8; 4],
+    vel: u8,
+) -> [u8; 17] {
     let mut o = [0u8; 17];
     o[..4].copy_from_slice(&rates);
     o[4..8].copy_from_slice(&levels);
@@ -280,7 +310,25 @@ fn op(level: u8, coarse: u8, fine: u8, detune: u8, rates: [u8; 4], levels: [u8; 
     o
 }
 
-const OFF: [u8; 17] = [99, 99, 99, 99, 99, 99, 99, 0, 39, 0, 0, 0, 7 << 3, 0, 0, 2, 0];
+const OFF: [u8; 17] = [
+    99,
+    99,
+    99,
+    99,
+    99,
+    99,
+    99,
+    0,
+    39,
+    0,
+    0,
+    0,
+    7 << 3,
+    0,
+    0,
+    2,
+    0,
+];
 
 /// A packed voice from its operators (OP1 first), algorithm (1-32), feedback and name.
 fn voice(ops: [[u8; 17]; 6], algorithm: u8, feedback: u8, name: &str) -> [u8; 128] {
@@ -306,30 +354,124 @@ fn default_voices() -> Vec<[u8; 128]> {
     let pluck = [99, 30, 25, 60];
     let mut bank = vec![
         // two-operator stacks (algorithm 5: 2->1, 4->3, 6->5)
-        voice([op(99, 1, 0, 7, [96, 28, 22, 65], [99, 80, 0, 0], 2), op(58, 14, 0, 7, [99, 60, 40, 70], [99, 0, 0, 0], 3),
-               op(92, 1, 0, 9, [95, 30, 24, 65], [99, 78, 0, 0], 2), op(76, 1, 0, 5, [94, 40, 30, 70], [99, 60, 0, 0], 2), OFF, OFF],
-              5, 0, "EMU E.PNO "),
-        voice([op(99, 0, 0, 7, [99, 40, 30, 70], [99, 85, 70, 0], 1), op(82, 0, 0, 7, [99, 45, 35, 70], [99, 60, 40, 0], 2),
-               OFF, OFF, OFF, OFF], 5, 5, "EMU BASS  "),
-        voice([op(99, 1, 0, 7, [99, 22, 18, 30], [99, 60, 0, 0], 1), op(74, 3, 50, 7, [99, 20, 18, 30], [99, 50, 0, 0], 2),
-               op(80, 1, 0, 10, [99, 25, 20, 30], [99, 55, 0, 0], 1), op(60, 4, 0, 7, [99, 25, 20, 30], [99, 40, 0, 0], 2), OFF, OFF],
-              5, 0, "EMU BELL  "),
-        voice([op(99, 1, 0, 7, [60, 40, 30, 55], [99, 90, 88, 0], 1), op(80, 1, 0, 7, [52, 35, 30, 55], [99, 85, 80, 0], 2),
-               op(95, 1, 0, 9, [62, 40, 30, 55], [99, 90, 88, 0], 1), op(72, 1, 0, 5, [55, 35, 30, 55], [99, 85, 80, 0], 2), OFF, OFF],
-              5, 6, "EMU BRASS "),
-        voice([op(95, 1, 0, 4, [40, 30, 30, 45], [99, 95, 95, 0], 0), op(55, 1, 0, 7, [40, 30, 30, 45], [99, 90, 90, 0], 0),
-               op(95, 1, 0, 10, [40, 30, 30, 45], [99, 95, 95, 0], 0), op(55, 1, 0, 7, [40, 30, 30, 45], [99, 90, 90, 0], 0),
-               op(90, 2, 0, 7, [40, 30, 30, 45], [99, 95, 95, 0], 0), op(45, 1, 0, 7, [40, 30, 30, 45], [99, 90, 90, 0], 0)],
-              5, 0, "EMU PAD   "),
-        voice([op(99, 1, 0, 7, pluck, [99, 70, 0, 0], 3), op(78, 3, 0, 7, [99, 45, 35, 70], [99, 40, 0, 0], 3), OFF, OFF, OFF, OFF],
-              5, 4, "EMU CLAV  "),
-        voice([op(99, 1, 0, 7, [99, 40, 30, 50], [99, 0, 0, 0], 2), op(70, 4, 0, 7, [99, 60, 40, 60], [99, 0, 0, 0], 3),
-               op(85, 4, 0, 7, [99, 55, 40, 55], [99, 0, 0, 0], 1), OFF, OFF, OFF], 5, 0, "EMU MARIMB"),
-        voice([op(99, 1, 0, 7, [99, 99, 99, 70], [99, 99, 99, 0], 0), op(92, 2, 0, 7, [99, 99, 99, 70], [99, 99, 99, 0], 0),
-               op(86, 4, 0, 7, [99, 99, 99, 70], [99, 99, 99, 0], 0), op(80, 8, 0, 7, [99, 99, 99, 70], [99, 99, 99, 0], 0), OFF, OFF],
-              32, 0, "EMU ORGAN "),
+        voice(
+            [
+                op(99, 1, 0, 7, [96, 28, 22, 65], [99, 80, 0, 0], 2),
+                op(58, 14, 0, 7, [99, 60, 40, 70], [99, 0, 0, 0], 3),
+                op(92, 1, 0, 9, [95, 30, 24, 65], [99, 78, 0, 0], 2),
+                op(76, 1, 0, 5, [94, 40, 30, 70], [99, 60, 0, 0], 2),
+                OFF,
+                OFF,
+            ],
+            5,
+            0,
+            "EMU E.PNO ",
+        ),
+        voice(
+            [
+                op(99, 0, 0, 7, [99, 40, 30, 70], [99, 85, 70, 0], 1),
+                op(82, 0, 0, 7, [99, 45, 35, 70], [99, 60, 40, 0], 2),
+                OFF,
+                OFF,
+                OFF,
+                OFF,
+            ],
+            5,
+            5,
+            "EMU BASS  ",
+        ),
+        voice(
+            [
+                op(99, 1, 0, 7, [99, 22, 18, 30], [99, 60, 0, 0], 1),
+                op(74, 3, 50, 7, [99, 20, 18, 30], [99, 50, 0, 0], 2),
+                op(80, 1, 0, 10, [99, 25, 20, 30], [99, 55, 0, 0], 1),
+                op(60, 4, 0, 7, [99, 25, 20, 30], [99, 40, 0, 0], 2),
+                OFF,
+                OFF,
+            ],
+            5,
+            0,
+            "EMU BELL  ",
+        ),
+        voice(
+            [
+                op(99, 1, 0, 7, [60, 40, 30, 55], [99, 90, 88, 0], 1),
+                op(80, 1, 0, 7, [52, 35, 30, 55], [99, 85, 80, 0], 2),
+                op(95, 1, 0, 9, [62, 40, 30, 55], [99, 90, 88, 0], 1),
+                op(72, 1, 0, 5, [55, 35, 30, 55], [99, 85, 80, 0], 2),
+                OFF,
+                OFF,
+            ],
+            5,
+            6,
+            "EMU BRASS ",
+        ),
+        voice(
+            [
+                op(95, 1, 0, 4, [40, 30, 30, 45], [99, 95, 95, 0], 0),
+                op(55, 1, 0, 7, [40, 30, 30, 45], [99, 90, 90, 0], 0),
+                op(95, 1, 0, 10, [40, 30, 30, 45], [99, 95, 95, 0], 0),
+                op(55, 1, 0, 7, [40, 30, 30, 45], [99, 90, 90, 0], 0),
+                op(90, 2, 0, 7, [40, 30, 30, 45], [99, 95, 95, 0], 0),
+                op(45, 1, 0, 7, [40, 30, 30, 45], [99, 90, 90, 0], 0),
+            ],
+            5,
+            0,
+            "EMU PAD   ",
+        ),
+        voice(
+            [
+                op(99, 1, 0, 7, pluck, [99, 70, 0, 0], 3),
+                op(78, 3, 0, 7, [99, 45, 35, 70], [99, 40, 0, 0], 3),
+                OFF,
+                OFF,
+                OFF,
+                OFF,
+            ],
+            5,
+            4,
+            "EMU CLAV  ",
+        ),
+        voice(
+            [
+                op(99, 1, 0, 7, [99, 40, 30, 50], [99, 0, 0, 0], 2),
+                op(70, 4, 0, 7, [99, 60, 40, 60], [99, 0, 0, 0], 3),
+                op(85, 4, 0, 7, [99, 55, 40, 55], [99, 0, 0, 0], 1),
+                OFF,
+                OFF,
+                OFF,
+            ],
+            5,
+            0,
+            "EMU MARIMB",
+        ),
+        voice(
+            [
+                op(99, 1, 0, 7, [99, 99, 99, 70], [99, 99, 99, 0], 0),
+                op(92, 2, 0, 7, [99, 99, 99, 70], [99, 99, 99, 0], 0),
+                op(86, 4, 0, 7, [99, 99, 99, 70], [99, 99, 99, 0], 0),
+                op(80, 8, 0, 7, [99, 99, 99, 70], [99, 99, 99, 0], 0),
+                OFF,
+                OFF,
+            ],
+            32,
+            0,
+            "EMU ORGAN ",
+        ),
     ];
-    let init = voice([op(99, 1, 0, 7, [99, 99, 99, 99], [99, 99, 99, 0], 0), OFF, OFF, OFF, OFF, OFF], 1, 0, "INIT VOICE");
+    let init = voice(
+        [
+            op(99, 1, 0, 7, [99, 99, 99, 99], [99, 99, 99, 0], 0),
+            OFF,
+            OFF,
+            OFF,
+            OFF,
+            OFF,
+        ],
+        1,
+        0,
+        "INIT VOICE",
+    );
     while bank.len() < SLOTS {
         bank.push(init);
     }
@@ -367,7 +509,12 @@ pub fn usr_fill_defaults(flash: &mut [u8], usr: usize) -> bool {
 
 /// A DX7 32-voice bank (a 4104-byte bulk dump `F0 43 0n 09 20 00 .. F7`, or the bare 4096
 /// bytes) into slots `first..first + 32`. Returns how many voices it wrote.
-pub fn usr_load_syx(flash: &mut [u8], usr: usize, syx: &[u8], first: usize) -> Result<usize, String> {
+pub fn usr_load_syx(
+    flash: &mut [u8],
+    usr: usize,
+    syx: &[u8],
+    first: usize,
+) -> Result<usize, String> {
     let data = if syx.len() >= 4104 && syx[0] == 0xf0 && syx[1] == 0x43 && syx[3] == 0x09 {
         &syx[6..6 + 4096]
     } else if syx.len() == 4096 {
@@ -398,7 +545,10 @@ mod tests {
     fn header(id: &str, n: usize) -> Vec<u8> {
         let mut f = vec![0u8; n * 0x30 + 0x100];
         for i in 0..n {
-            f[i * 0x30 + 0x2f] = id.as_bytes().get(i).map_or(0x7d, |&c| c.wrapping_add(i as u8 + 1));
+            f[i * 0x30 + 0x2f] = id
+                .as_bytes()
+                .get(i)
+                .map_or(0x7d, |&c| c.wrapping_add(i as u8 + 1));
         }
         // the byte after the header (block n's marker position) must not read as 0x7D
         f[n * 0x30 + 0x2f] = 0x12;
@@ -407,7 +557,13 @@ mod tests {
 
     #[test]
     fn container_counts_blocks_and_reads_the_identity() {
-        assert_eq!(container(&header("FM-1_015", 20)), (20, "FM-1_015".to_string()));
-        assert_eq!(container(&header("SMK-37 Pro_016", 36)), (36, "SMK-37 Pro_016".to_string()));
+        assert_eq!(
+            container(&header("FM-1_015", 20)),
+            (20, "FM-1_015".to_string())
+        );
+        assert_eq!(
+            container(&header("SMK-37 Pro_016", 36)),
+            (36, "SMK-37 Pro_016".to_string())
+        );
     }
 }

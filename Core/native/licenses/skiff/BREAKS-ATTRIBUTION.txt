@@ -1,0 +1,26 @@
+SLICE's built-in loops (Skiff phase 9, after Skiff 1.1)
+
+  break.wav  BREAK (SLICE SOURCE 0): one bar at 120 BPM, 22050 Hz mono, 44100 samples
+  funk.wav   FUNK (SLICE SOURCE 5): two beats at 86.33 BPM, 22050 Hz mono, 30650 samples
+
+Both are cut from drum takes generated on 2026-10-15 with the YuE2 music model by Multimodal Art
+Projection (m-a-p, https://github.com/multimodal-art-projection/YuE): YuE2-3B (Comfy-Org's
+yue2_3b_int8_convrot.safetensors) in ComfyUI 0.37.4's native YuE2 nodes, ABC planning off,
+12 s, temperature 1.0, top_p 0.95, top_k 100, repetition penalty 1.2; KSampler 32 steps, cfg 1,
+dpm_2, sgm_uniform. The style text of both ended in "A drum break played on a live acoustic drum
+kit: kick, snare, hi-hats, ghost notes. Drums only, no vocals, no bass, no guitar, no keys.
+120 BPM, 4/4, dry vintage soul recording."
+
+  break.wav  style "Breakbeat drum solo. ...", lyrics "[Drum Break] [instrument solo]
+             [instrument solo]", seed 1001: its second bar, 2.713 to 4.713 s (it plays at 120.00 BPM)
+  funk.wav   style "Solo funk drum break. ...", lyrics "[Instrumental] [Drum Solo]", seed 1000:
+             4.473 to 5.863 s (it plays at 86.33 BPM: four eighths, before a sung phrase at 7.3 s)
+
+Each cut: 48 kHz stereo to 22050 Hz (soxr), left and right mixed to mono, its start 8 ms before
+the beat, its join cross-faded over 3 ms with what followed the loop's end, peak -0.5 dBFS.
+tools/gen_samples.py encodes them (IMA ADPCM) and writes their slice tables.
+
+YuE2's weights are CC BY-NC 4.0 with an additional permission (2026-09-16) for individual
+creators to generate outputs and to publish, distribute, sell or license them; being made with
+the weights does not by itself put an output under their NonCommercial term. No YuE2 weights or
+code are in this tree. The loops are part of Skiff: GPL-3.0-only (LICENSING.md).

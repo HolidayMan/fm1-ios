@@ -19,11 +19,13 @@ obj(3, f'isa = PBXGroup; children = ({ident(7)}, {ident(8)}, {ident(9)}); name =
 obj(4, f'isa = PBXFileSystemSynchronizedRootGroup; exceptions = ({ident(70)}); path = App; sourceTree = "<group>";')
 obj(5, 'isa = PBXFileSystemSynchronizedRootGroup; path = FM1Tests; sourceTree = "<group>";')
 obj(6, 'isa = PBXFileSystemSynchronizedRootGroup; path = FM1UITests; sourceTree = "<group>";')
+obj(29, r'isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = (); inputPaths = (); name = "Build matching core"; outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "\"${SRCROOT}/scripts/build_core.sh\""; alwaysOutOfDate = 1;')
+obj(30, r'isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = (); inputPaths = ("$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)", "$(TARGET_BUILD_DIR)/$(EXECUTABLE_PATH)"); name = "Audit store boundary"; outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "if [ \"${CONFIGURATION}\" = Release ]; then python3 \"${SRCROOT}/scripts/audit_store_artifact.py\" \"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\"; fi"; alwaysOutOfDate = 1;')
 obj(70, f'isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Info.plist, FM1Bridge.h); target = {app};')
 for n, typ, name in [(7, 'wrapper.application', 'FM1.app'),(8, 'wrapper.cfbundle', 'FM1Tests.xctest'),(9,'wrapper.cfbundle','FM1UITests.xctest')]:
     obj(n, f'isa = PBXFileReference; explicitFileType = {typ}; includeInIndex = 0; path = {name}; sourceTree = BUILT_PRODUCTS_DIR;')
 for i, name, product_type in [(0,'FM1','com.apple.product-type.application'),(1,'FM1Tests','com.apple.product-type.bundle.unit-test'),(2,'FM1UITests','com.apple.product-type.bundle.ui-testing')]:
-    obj(10+i, f'isa = PBXNativeTarget; buildConfigurationList = {ident(51+i)}; buildPhases = ({ident(20+i*3)}, {ident(21+i*3)}, {ident(22+i*3)}); buildRules = (); dependencies = ({ident(61+i) if i else ""}); fileSystemSynchronizedGroups = ({ident(4+i)}); name = {name}; productName = {name}; productReference = {ident(7+i)}; productType = "{product_type}";')
+    obj(10+i, f'isa = PBXNativeTarget; buildConfigurationList = {ident(51+i)}; buildPhases = ({ident(29)+", " if i == 0 else ""}{ident(20+i*3)}, {ident(21+i*3)}, {ident(22+i*3)}{", "+ident(30) if i == 0 else ""}); buildRules = (); dependencies = ({ident(61+i) if i else ""}); fileSystemSynchronizedGroups = ({ident(4+i)}); name = {name}; productName = {name}; productReference = {ident(7+i)}; productType = "{product_type}";')
     for offset, typ in enumerate(['PBXSourcesBuildPhase','PBXFrameworksBuildPhase','PBXResourcesBuildPhase']):
         obj(20+i*3+offset, f'isa = {typ}; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
 for i in [1,2]:
@@ -31,15 +33,21 @@ for i in [1,2]:
     obj(90+i, f'isa = PBXTargetDependency; target = {app}; targetProxy = {ident(80+i)};')
 objects = [s.replace(f'dependencies = ({ident(62)});', f'dependencies = ({ident(91)});').replace(f'dependencies = ({ident(63)});',f'dependencies = ({ident(92)});') for s in objects]
 common = 'ARCHS = arm64; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; SWIFT_STRICT_CONCURRENCY = minimal;'
-app_settings = 'ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; SWIFT_OBJC_BRIDGING_HEADER = App/FM1Bridge.h; OTHER_LDFLAGS = ("-lfm1_ios_core", "-liconv"); "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = "$(SRCROOT)/target/aarch64-apple-ios-sim/release"; "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/target/aarch64-apple-ios/release"; PRODUCT_BUNDLE_IDENTIFIER = com.local.fm1.instrument; PRODUCT_NAME = "$(TARGET_NAME)"; INFOPLIST_FILE = App/Info.plist; GENERATE_INFOPLIST_FILE = NO; TARGETED_DEVICE_FAMILY = "1,2"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES;  CODE_SIGN_STYLE = Automatic;'
+app_settings = 'ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; SWIFT_OBJC_BRIDGING_HEADER = App/FM1Bridge.h; OTHER_LDFLAGS = ("-lfm1_ios_core", "-liconv"); PRODUCT_BUNDLE_IDENTIFIER = com.local.fm1.instrument; PRODUCT_NAME = "$(TARGET_NAME)"; INFOPLIST_FILE = App/Info.plist; GENERATE_INFOPLIST_FILE = NO; TARGETED_DEVICE_FAMILY = "1,2"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES;  CODE_SIGN_STYLE = Automatic;'
 test_settings = 'GENERATE_INFOPLIST_FILE = YES; PRODUCT_NAME = "$(TARGET_NAME)"; TARGETED_DEVICE_FAMILY = "1,2"; CODE_SIGN_STYLE = Automatic;'
 for group in range(4):
     numbers = []
     for mode in ['Debug','Release']:
         n = 100+group*2+(mode=='Release')
         numbers.append(ident(n))
-        settings = common + (' DEBUG_INFORMATION_FORMAT = dwarf; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; ENABLE_TESTABILITY = YES; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;' if mode=='Debug' else ' SWIFT_OPTIMIZATION_LEVEL = "-O";')
-        if group==1: settings+=app_settings
+        settings = common + (' DEBUG_INFORMATION_FORMAT = dwarf; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; ENABLE_TESTABILITY = YES; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG FM1_RESEARCH";' if mode=='Debug' else ' SWIFT_OPTIMIZATION_LEVEL = "-O";')
+        if group==1:
+            settings+=app_settings
+            if mode == 'Debug':
+                settings+=' \"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]\" = \"$(SRCROOT)/target/aarch64-apple-ios-sim/release\"; \"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]\" = \"$(SRCROOT)/target/aarch64-apple-ios/release\";'
+            if mode == 'Release':
+                settings+=' "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = "$(SRCROOT)/target/store/aarch64-apple-ios-sim/release"; "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/target/store/aarch64-apple-ios/release"; EXCLUDED_SOURCE_FILE_NAMES = ("WebInstrumentEngine.swift", "WebEngine", "*.wasm", "*.js", "*.html"); DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";'
+
         if group==2: settings+=test_settings+' PRODUCT_BUNDLE_IDENTIFIER = com.local.fm1.instrument.tests; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FM1.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FM1"; BUNDLE_LOADER = "$(TEST_HOST)";'
         if group==3: settings+=test_settings+' PRODUCT_BUNDLE_IDENTIFIER = com.local.fm1.instrument.uitests; TEST_TARGET_NAME = FM1;'
         obj(n, f'isa = XCBuildConfiguration; buildSettings = {{ {settings} }}; name = {mode};')

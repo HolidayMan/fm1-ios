@@ -12,7 +12,7 @@ final class PanelTouchUITests:XCTestCase {
     }
     private func app()->XCUIApplication {
         XCUIDevice.shared.orientation = .landscapeLeft
-        let app=XCUIApplication();app.launchArguments += ["--panel-touch-diagnostics"];app.launch()
+        let app=XCUIApplication();app.launchArguments += ["--panel-touch-diagnostics","-instrumentHeaderCollapsed","NO"];app.launch()
         XCTAssertTrue(app.buttons["F3"].waitForExistence(timeout:10))
         return app
     }

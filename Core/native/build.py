@@ -7,8 +7,8 @@ import pathlib
 import shutil
 import subprocess
 import sys
+from target_config import Toolchain
 
-PIN = '4ec1ac829fd2bdf2c571ea215fb3d62477d01220'
 HERE = pathlib.Path(__file__).resolve().parent
 
 def run(*args):
@@ -26,11 +26,16 @@ def main():
     a = p.parse_args()
     source = a.source.resolve()
     head = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
-    if head != PIN:
-        sys.exit('native SLOOP requires exact v2.7.1 source commit ' + PIN)
+    lock = json.loads((HERE / 'upstream.lock.json').read_text())
+    pin = lock['sloop']
+    if head != pin['commit']:
+        sys.exit('native SLOOP requires exact '+pin['tag']+' source commit '+pin['commit'])
     run('git', '-C', source, 'diff', '--exit-code', 'HEAD', '--', 'firmware', 'tools', 'assets')
     generated = source / 'build/generated'
-    lock = json.loads((HERE / 'upstream.lock.json').read_text())
+    package = source / pin['package']['path']
+    if (not package.is_file() or package.stat().st_size != pin['package']['size'] or
+            hashlib.sha256(package.read_bytes()).hexdigest() != pin['package']['sha256']):
+        sys.exit('Missing/corrupt exact SLOOP release package')
     for name, expected in lock['sloop']['generated_headers_sha256'].items():
         file = generated / name
         if not file.is_file() or hashlib.sha256(file.read_bytes()).hexdigest() != expected:
@@ -58,11 +63,8 @@ def main():
     wrapper = out / 'native'
     wrapper.mkdir(exist_ok=True)
     shutil.copy2(HERE / 'sloop_core.c', wrapper / 'sloop_core.c')
-    clang = subprocess.check_output(['xcrun', '--sdk', a.sdk, '--find', 'clang'], text=True).strip()
-    sdk = subprocess.check_output(['xcrun', '--sdk', a.sdk, '--show-sdk-path'], text=True).strip()
-    triple = {'aarch64-apple-darwin':'arm64-apple-macos11.0',
-              'aarch64-apple-ios':'arm64-apple-ios17.0',
-              'aarch64-apple-ios-sim':'arm64-apple-ios17.0-simulator'}[a.target]
+    tc = Toolchain(a.target, a.sdk)
+    clang, triple = tc.cc, tc.triple
     if a.fixture_output:
         if a.target != 'aarch64-apple-darwin' or not a.fixture_input:
             sys.exit('Fixture generation requires host target and a fresh firmware-only base flash')
@@ -82,7 +84,7 @@ def main():
             'f=fopen(argv[2],"wb");if(!f)return 4;size_t n=fwrite(host_flash,1,HOST_FLASH_SIZE,f);' +
             'fclose(f);return n==HOST_FLASH_SIZE?0:5;}\n')
         executable = out / 'make-fixture'
-        run(clang, '-target', triple, '-isysroot', sdk, '-O2', '-std=gnu11', '-w', '-fwrapv', '-fno-strict-aliasing',
+        run(clang, '-target', triple, *tc.flags, '-O2', '-std=gnu11', '-w', '-fwrapv', '-fno-strict-aliasing',
             '-DFEL_PREFIX=slp_', '-DFEL_BSS_SECTION="__DATA,__felbss"',
             '-DFEL_DATA_SECTION="__DATA,__feldata"', '-I' + str(HERE), '-I' + str(generated),
             program, '-o', executable)
@@ -92,10 +94,9 @@ def main():
     run(sys.executable, HERE / 'fel_state_build.py', '--cc', clang,
         '--src', wrapper / 'sloop_core.c', '--out', out / 'sloop.o',
         '--prefix', 'slp_', '--work', out / 'llvm', '--target', triple,
-        '--flag=-isysroot', '--flag=' + sdk, '--flag=-fwrapv', '--flag=-fno-strict-aliasing',
-        '-DFEL_PREFIX=slp_', '-DFEL_BSS_SECTION="__DATA,__felbss"',
-        '-DFEL_DATA_SECTION="__DATA,__feldata"', '-I' + str(HERE), '-I' + str(generated))
-    run('xcrun', 'ar', 'crs', out / 'libfm1_native_sloop.a', out / 'sloop.o')
+        *['--flag='+f for f in tc.flags], '--flag=-fwrapv', '--flag=-fno-strict-aliasing',
+        '-DFEL_PREFIX=slp_', *tc.sections, '-I' + str(HERE), '-I' + str(generated))
+    run(*tc.ar, 'crs', out / 'libfm1_native_sloop.a', out / 'sloop.o')
 
 if __name__ == '__main__':
     main()

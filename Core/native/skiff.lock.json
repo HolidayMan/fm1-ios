@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "native_api_version": 1,
+  "id": "skiff",
+  "kind": 7,
+  "prefix": "skf_",
+  "source": "https://github.com/illuminus5/skiff",
+  "tag": "v1.4",
+  "commit": "c01fa1ed619266d770ea6552b153612e1b77d0a9",
+  "flash_bytes": 1048576,
+  "state_alignment": 16,
+  "package": {
+    "id": "skiff",
+    "name": "Skiff",
+    "version": "1.4",
+    "author": "illuminus5",
+    "size": 610337,
+    "sha256": "0622a752e8304777c042ccea0732ba023e1413baa6dbc8724576e2ec76de02e0",
+    "url": "https://github.com/illuminus5/skiff/releases/download/v1.4/skiff-1.4.fwsc",
+    "source": "https://github.com/illuminus5/skiff/tree/v1.4"
+  },
+  "generated_headers_sha256": {
+    "felucca_fm6.h": "d1859b8194443ecbe099505909d6ea4db866d919100c81d738bb06d56004f791",
+    "felucca_samples.h": "ff5517562c74e15ea227ab657c04a0cad5bf86df019062546948068f7e675672",
+    "felucca_tables.h": "a975289289c52b9f9fd2ff985a147b199f8a3afa9fb416e95f99cb83131993cb",
+    "ui_fonts.h": "d278e3002b34d7c112b627142ffcc984dd98d1047a5d9aa90f5abbfd491ea2d9",
+    "ui_icons.h": "a025f02c4b76260946f8406efe8696d061033f7d63fc5c9bdd9354525c35656d",
+    "ui_keycaps.h": "d07c0bb7321b207191fab8c491fb389701e38ae57ae18561f59452e9be119efd",
+    "ui_palettes.h": "952a10ffd7a4b4a10001fa5e1f727dcdb8b20f7c149692a9131992d57c00f439",
+    "ui_pixfont.h": "a8c89ca1ae263067099d829cf0b681aedc54e4c9646c651e1d9e06927afe7886"
+  },
+  "notices_sha256": {
+    "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "LICENSING.md": "2bb5a3913bca572ae7be8dd6a1f8052aa3bdb7cdb753aa40043d5db8b322cf60",
+    "LICENSES/Apache-2.0-msfa.txt": "27dd23b62bc11d0806562397a1e782f86fc7dcacd1ba7a1b58d3c78a54795e62",
+    "LICENSES/Apache-2.0.txt": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "LICENSES/MIT-DaisySP.txt": "7fa755aede5b5c2a8131a6db692f5818ed8d21dcbe632f41618af03b6d698126",
+    "LICENSES/MIT-Fukiai.txt": "fddeab17d69ab85a8e9c593beb0e93c279a9d74ff9504e1804bba123cb63e08e",
+    "LICENSES/MIT-Rings.txt": "60cd097bf74b2a3a0cadadeddec5d80b6806f83039e6ce9cb0ba511a1f17a2be",
+    "LICENSES/MIT-fm1-clk320.txt": "fb57f2a18c2643047326ec26a15cba278e776d8dbb648f97f1b8b3ee88c4543b",
+    "LICENSES/OFL-BarlowCondensed.txt": "186d750eb496a4c17a76385f82be6aea2ac1cf2de074a811d63786cf374ea73f",
+    "LICENSES/OFL-DotGothic16.txt": "5e59cab6d61d59a5b3110ed900dce715383cb2626a473dcf77c13c116aa839eb",
+    "LICENSES/OFL-InterTight.txt": "50240ab035cf1b6b3307940235481d515c4b6de3ab1fa843dbe59e7892cb9d58",
+    "assets/breaks/ATTRIBUTION.txt": "189c9720346d7b8368ad97b1e0a9ea097f79e7b667cf6e8e1da6672f9fa76658"
+  },
+  "licensing_notes": [
+    "GPL-3.0-only application and Hugelton Sample Pack; MIT/Apache/OFL components retain notices.",
+    "BREAK/FUNK contain generated YuE2 outputs; upstream claims individual-creator output permission. Independent commercial redistribution clearance is not established by this pin."
+  ],
+  "browser_host": "web/emu/felucca_web.c",
+  "source_host_limitations": [
+    "single-core host rendering; CPU core/PLL controls cannot enable physical second core or PLL",
+    "USB/audio/editor update hardware and TRS MIDI not exposed by this adapter"
+  ],
+  "sample_offset_patches": {
+    "eng_sample.c": 1,
+    "eng_grain.c": 1,
+    "eng_slice.c": 1,
+    "ui_graph.c": 1
+  }
+}

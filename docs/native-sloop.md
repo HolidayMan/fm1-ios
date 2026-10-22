@@ -18,11 +18,11 @@ The earlier sustained three-key checks did not cover the saved sequencer loop.
 
 ## Architecture
 
-When built with `FM1_NATIVE_SLOOP`, the exact pinned SLOOP 2.7.1 package SHA-256
+When built with `FM1_NATIVE_SLOOP`, the exact pinned SLOOP 2.8 package SHA-256
 selects source-native execution. Every unmatched package retains the binary
 interpreter and its optional existing static kernels. Selection does not depend
 on the package filename or a user-entered version string. The native backend
-compiles exact source commit `4ec1ac829fd2bdf2c571ea215fb3d62477d01220`; all
+compiles exact source commit `b77bf55e3bf804665b8f5dffb5955bd8443311f0`; all
 seven generated resource hashes are checked before compilation. A failed native
 build fails explicitly. See [build instructions](../Core/native/README.md).
 
@@ -188,3 +188,35 @@ its earlier PCM exactly. Private evidence is in
 `Research/NativeSloop/rapid-edge-probe/after-summary.json` and
 `Research/NativeSloop/native-input-final-workspace-tests.log`; final platform
 archives and source receipts use `fm1-native-sloop-build6-final-*` filenames.
+
+
+### SLOOP 2.8 source update — 2026-10-21
+
+The compiled SLOOP engine now uses official tag `v2.8`, commit
+`b77bf55e3bf804665b8f5dffb5955bd8443311f0`. Its exact released FWSC is
+610,035 bytes, SHA-256
+`fb69b4311790eb7ec09498be16ae2b71bd681840e221c0d8cfdb26fb5f9a2928`.
+A separately downloaded official release asset matched the source tree's package.
+The generated sample header changed; all seven generated resources are pinned
+and verified, along with the source and package, before native compilation.
+The wrapper restores the new FX FADE setting at startup using the upstream
+main-loop initialization. Source-native package selection accepts only 2.8;
+the prior package is not relabelled as the new engine.
+
+Upstream retains project format6 and its 3,816-byte project payload; new FX FADE
+and filter-resonance settings use spare bits in the existing MIDI settings.
+The private synthetic 2.7.1 stress fixture was opened in compiled 2.7.1 and 2.8
+engines. All 12 logical backup objects, the working project and A–D projects
+matched byte for byte, and startup retained the full 1 MiB flash unchanged.
+After a 2.8 commit, both versions reopened every logical object unchanged;
+all four sample regions and the original fixture remained unchanged. This
+synthetic compatibility check does not claim physical-device data acceptance.
+Receipt: `Research/NativeSloop/migration28/comparison.json`.
+
+All eight source-native engines passed the host release workspace suite:
+87 tests, including save/restore, typed file operations, song rendering, instance
+isolation, exact package lookup and a new persisted FX FADE startup regression.
+The official 2.8 host UI suite also passed the NOTES editor, drum step sheet and
+20,000-frame fuzz checks. Local logs: `Research/NativeSloop/native-2.8-tests.log`
+and `Research/NativeSloop/upstream-2.8-ui-tests.log`. Platform builds and release
+distribution are recorded separately in `verification.md`.

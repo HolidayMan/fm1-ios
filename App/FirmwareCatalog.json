@@ -1,38 +1,5 @@
 [
   {
-    "id": "stock",
-    "name": "Stock",
-    "version": "V15",
-    "author": "M-VAVE",
-    "url": "https://yms-file-store.oss-cn-hongkong.aliyuncs.com/software/firmware/FM-1.fwsc",
-    "sha256": "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a",
-    "size": 699956,
-    "source": "https://www.sincoaudio.com/product?id=fm-1",
-    "beta": false
-  },
-  {
-    "id": "zp12",
-    "name": "zp12",
-    "version": "2.4.2",
-    "author": "zvenson",
-    "sha256": "dd05aec856d37b6a76355dc5dcf57b8103936dff9cfc2515576d8212090e299e",
-    "size": 610110,
-    "source": "https://github.com/zvenson/zp12",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/zp12-2.4.2.fwsc"
-  },
-  {
-    "id": "hortator",
-    "name": "Hortator",
-    "version": "0.16.0",
-    "author": "DEADACTIVE",
-    "sha256": "8f09f76083cf07ef319412dfd769d2dc8fa818c69fafc1b65a054046d18d3f7a",
-    "size": 609649,
-    "source": "https://github.com/deadactive/hortator/tree/drum-v0.16.0",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/hortator-0.16.0.fwsc"
-  },
-  {
     "id": "felucca",
     "name": "Felucca",
     "version": "1.6.1",
@@ -41,18 +8,7 @@
     "size": 610090,
     "source": "https://github.com/hugelton/Felucca/tree/v1.6.1",
     "beta": false,
-    "url": "https://thefirmwarehub.com/fw/felucca-1.6.1.fwsc"
-  },
-  {
-    "id": "salt",
-    "name": "Felucca [Salt]",
-    "version": "0.9-salt14",
-    "author": "Chance Roth (ChanceTheMaker)",
-    "sha256": "efb516a7131d12eb5c008ff9af5a380d07e82eb1040bd03990f28d1233417e28",
-    "size": 609662,
-    "source": "https://github.com/ChanceTheMaker/Felucca/tree/v0.9-salt14",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/salt-0.9-salt14.fwsc"
+    "url": "https://github.com/hugelton/Felucca/releases/download/v1.6.1/felucca-1.6.1.fwsc"
   },
   {
     "id": "jangada",
@@ -66,81 +22,26 @@
     "url": "https://thefirmwarehub.com/fw/jangada-1.0.1.fwsc"
   },
   {
-    "id": "ghoulbox",
-    "name": "GHOULBOX",
-    "version": "2.1",
-    "author": "Jason Persinger",
-    "sha256": "0ff97820d50fc12e9f7b98563aeb84b9a861edd5263a48dd094b3ecd0f4ab8f3",
-    "size": 610086,
-    "source": "https://github.com/jasonpersinger/ghoulbox-fm1-dungeon-synth/tree/ghoulbox-v2.1",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/ghoulbox-2.1.fwsc"
-  },
-  {
     "id": "melodee",
     "name": "Melodee",
-    "version": "1.4.1",
+    "version": "1.4.5 INIT",
     "author": "keremimo",
-    "sha256": "fe14e72f231fea45d3b10519846db3c733d7f175a88993a1f12853c3f5ba3c3d",
-    "size": 610534,
-    "source": "https://github.com/keremimo/melodee/tree/v1.4.1",
+    "sha256": "a18f40d6f8c8087b25f115ab11286f85c7f04383de836227c463c6ce4745ce20",
+    "size": 610545,
+    "source": "https://github.com/keremimo/melodee/tree/v1.4.5",
     "beta": false,
-    "url": "https://thefirmwarehub.com/fw/melodee-1.4.1.fwsc"
+    "url": "https://github.com/keremimo/melodee/releases/download/v1.4.5/melodee-1.4.5.fwsc"
   },
   {
     "id": "sloop",
     "name": "SLOOP",
-    "version": "2.7.1",
+    "version": "2.8",
     "author": "isod89",
-    "sha256": "7c9d269d15d1c1a48e0ebada7ffa2c2aa196c19d51056fd3f760d322322b335f",
+    "sha256": "fb69b4311790eb7ec09498be16ae2b71bd681840e221c0d8cfdb26fb5f9a2928",
     "size": 610035,
-    "source": "https://github.com/isod89/sloop-fm1/tree/v2.7.1",
+    "source": "https://github.com/isod89/sloop-fm1/tree/v2.8",
     "beta": false,
-    "url": "https://thefirmwarehub.com/fw/sloop-2.7.1.fwsc"
-  },
-  {
-    "id": "bubba",
-    "name": "Bubba Machine",
-    "version": "0.7.0-beta",
-    "author": "Erbubar23",
-    "sha256": "fd954c6f1bb826e82c51345450a5a57dbfe5aeb16b73a2e5089a4f1f0d145708",
-    "size": 699956,
-    "source": "https://github.com/Erbubar23/bubba-machine/tree/v0.7.0-beta",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/bubba-0.7.0-beta.fwsc"
-  },
-  {
-    "id": "floyd",
-    "name": "SLOOP Floyd FM",
-    "version": "2.4",
-    "author": "René Bohne",
-    "sha256": "d70301ad3e1f67a71792a2644829658a8570eceb0681ba2ac6eb41d771cc7560",
-    "size": 609802,
-    "source": "https://github.com/renebohne/sloop-fm1/tree/v2.4",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/floyd-2.4.fwsc"
-  },
-  {
-    "id": "sloopbanks",
-    "name": "SLOOP DX7 Banks",
-    "version": "2.5-b28-test",
-    "author": "majnikool",
-    "sha256": "a54e9d815db8502565023b11977f83da2fa9bcbdf824ee64ec67d81d601e4cd3",
-    "size": 610019,
-    "source": "https://github.com/majnikool/sloop-fm1/tree/v2.5-b28-test",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/sloopbanks-2.5-b28-test.fwsc"
-  },
-  {
-    "id": "sloopdx",
-    "name": "sloopDX",
-    "version": "4.0",
-    "author": "zvenson",
-    "sha256": "5d330286fa42583db5d2e4eceb246dbcbcff6c8e716398f4c98ed87ab56c6c79",
-    "size": 610130,
-    "source": "https://github.com/zvenson/dxsloop",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/sloopdx-4.0.fwsc"
+    "url": "https://github.com/isod89/sloop-fm1/releases/download/v2.8/sloop-2.8.fwsc"
   },
   {
     "id": "x0x",
@@ -151,7 +52,7 @@
     "size": 609684,
     "source": "https://github.com/charlesvestal/fm1-x0x/tree/v1.1.0",
     "beta": false,
-    "url": "https://thefirmwarehub.com/fw/x0x-1.1.0.fwsc"
+    "url": "https://github.com/charlesvestal/fm1-x0x/releases/download/v1.1.0/x0x-1.1.0.fwsc"
   },
   {
     "id": "fomni",
@@ -165,421 +66,25 @@
     "url": "https://thefirmwarehub.com/fw/fomni-0.4.fwsc"
   },
   {
-    "id": "choralroot",
-    "name": "ChoralRoot",
-    "version": "0.24-beta2",
-    "author": "Quixotic7",
-    "sha256": "17788180f245c58646dba17dcd19bf564f641c6ec375f3ab8429dd0d40db6c2e",
-    "size": 610313,
-    "source": "https://github.com/Quixotic7/ChoralRootFM1/tree/v0.24-beta2",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/choralroot-0.24-beta2.fwsc"
-  },
-  {
-    "id": "waveloop",
-    "name": "WaveLoop FM-1",
-    "version": "1.0.5.2-midi23",
-    "author": "ELI7VH",
-    "sha256": "e9529deb7ff626ee64b08fe06a550e39cd2a99c3cc1697bfcb65828f030cf22d",
-    "size": 609849,
-    "source": "https://github.com/ELI7VH/Felucca/tree/1.0.5.2-midi23",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/waveloop-1.0.5.2-midi23.fwsc"
-  },
-  {
-    "id": "obervave",
-    "name": "OberVave",
-    "version": "1.5",
-    "author": "zvenson",
-    "sha256": "852c1dfea772a57f3e350e03e42d33a0063fe71df1db062ddb55127d62e90fdb",
-    "size": 610110,
-    "source": "https://github.com/zvenson/obervave/tree/v1.5",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/obervave-1.5.fwsc"
-  },
-  {
-    "id": "dinghy",
-    "name": "Dinghy",
-    "version": "0.3",
-    "author": "zvenson",
-    "sha256": "4e907044a7bda340317fc910d33a0e006eb4d587e08d8980de74d7edcca3ca8e",
-    "size": 610110,
-    "source": "https://github.com/zvenson/dinghy/tree/v0.3",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/dinghy-0.3.fwsc"
-  },
-  {
-    "id": "fimba",
-    "name": "FiMba-1",
-    "version": "0.6.1",
-    "author": "jadamsowers",
-    "sha256": "2ce744411ab6142a27e5c6238b8eb2f3875ccaa1e6fc47726211bf09f1393fa7",
-    "size": 609657,
-    "source": "https://github.com/jadamsowers/fm1-fimba/tree/v0.6.1",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/fimba-0.6.1.fwsc"
-  },
-  {
-    "id": "jiant",
-    "name": "JIANT FM",
-    "version": "0.7.4-de2a4cb",
-    "author": "juanjiant-bit",
-    "sha256": "f4e5dd45c286c31f0b2cf2bd7a555a2595c0c2d0154bf96964f0b0b3e4f1c9b1",
-    "size": 610089,
-    "source": "https://github.com/juanjiant-bit/JIANT/tree/de2a4cb",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/jiant-0.7.4-de2a4cb+f4e5dd45.fwsc"
-  },
-  {
-    "id": "chord",
-    "name": "fm1-chord",
-    "version": "0.3",
-    "author": "math0ne",
-    "sha256": "e2d06d0bfd4cd93bb0913494496a526775cb4661a3f2973818c4dd696807d145",
-    "size": 609851,
-    "source": "https://github.com/math0ne/fm1-chord/tree/v0.3",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/chord-0.3.fwsc"
-  },
-  {
-    "id": "fumi",
-    "name": "FuMi-1",
-    "version": "1.0.7",
-    "author": "cartesive",
-    "sha256": "817845fb4a6f6f232693bd4e643874fdad1ba36775acbbf53a1695421abdb57f",
-    "size": 609657,
-    "source": "https://github.com/cartesive/fumi-1/tree/fumi-1.0.7",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/fumi-1.0.7.fwsc"
-  },
-  {
-    "id": "maku",
-    "name": "MAKU",
-    "version": "1.0",
-    "author": "okumurari",
-    "sha256": "b55d471fd179008511dfea032530750f0692d5be8eab263970f5c3c2162b53ea",
-    "size": 610086,
-    "source": "https://github.com/okumurari2/maku/tree/maku-v1.0",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/maku-1.0.fwsc"
-  },
-  {
-    "id": "rainbow",
-    "name": "Rainbow Mode",
-    "version": "1.1.5-rb",
-    "author": "joshbartlettband-web",
-    "sha256": "804c77851c4125f12ce81a50e0f40a421c02401b1a3e72cc4240b231d2e30e83",
-    "size": 610086,
-    "source": "https://github.com/joshbartlettband-web/felucca-rainbow/tree/main",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/rainbow-1.1.5-rb+804c7785.fwsc"
-  },
-  {
-    "id": "amb",
-    "name": "AMB-1",
-    "version": "1.2",
-    "author": "Charles Vestal",
-    "sha256": "7372e07e845bfad8ec3797963b4312563addc6451dae35bdadc0ba92b73875d0",
-    "size": 609666,
-    "source": "https://github.com/charlesvestal/fm1-amb/tree/v1.2",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/amb-1.2.fwsc"
-  },
-  {
-    "id": "ctl",
-    "name": "CTL-1",
-    "version": "0.9.2",
-    "author": "Charles Vestal",
-    "sha256": "6898c0497f83340152586f9b7b18c2a654dd330ef180ee8f230fcc17b8fca3b3",
-    "size": 609661,
-    "source": "https://github.com/charlesvestal/fm1-ctl/tree/v0.9.2",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/ctl-0.9.2.fwsc"
-  },
-  {
-    "id": "winampfm",
-    "name": "winampFM Synth",
-    "version": "0.12",
-    "author": "Hericdk",
-    "sha256": "32a78b18132be64b83557886f9fc1c8c4419adb8932a2b8bc83bb5fb7e681b0b",
-    "size": 610019,
-    "source": "https://github.com/hericdk/winampFM/tree/v0.12",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/winampfm-0.12.fwsc"
-  },
-  {
-    "id": "mycelium",
-    "name": "MYCELIUM",
-    "version": "1.0-test",
-    "author": "Mandalars",
-    "sha256": "9aa2802a0ac07f412e36c079c8034820b7405e3477468d0b3cfc7fd3f93e0da8",
-    "size": 609999,
-    "source": "https://github.com/megagott/mycelium-fm1/tree/v1.0-test",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/mycelium-1.0-test.fwsc"
-  },
-  {
-    "id": "polly",
-    "name": "Polly",
-    "version": "0.4.3",
-    "author": "Charles Vestal",
-    "sha256": "864830d89a6968b5f59ab015580cd79a5bba6fb65e8a4c539fefaecec027b937",
-    "size": 609934,
-    "source": "https://github.com/charlesvestal/fm1-polly/tree/v0.4.3",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/polly-0.4.3.fwsc"
-  },
-  {
-    "id": "etch",
-    "name": "ETCH",
-    "version": "1.38",
-    "author": "SikkenWorks",
-    "sha256": "095ef70ccf50a2677d794a0a9d939742c574cf42713c733c9ad7553c1fdbba8a",
-    "size": 610086,
-    "source": "https://github.com/SikkenWorks/ETCH/tree/ETCH-Update",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/etch-1.38.fwsc"
-  },
-  {
-    "id": "fm106",
-    "name": "FM-106",
-    "version": "Beta4",
-    "author": "PatttF",
-    "sha256": "2339bd6438ed23fa95bb1f60b1ff888c9fe2861e28608ce5de904aad1e288baf",
-    "size": 610265,
-    "source": "https://github.com/PatttF/fm-106/tree/Beta4",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/fm106-Beta4.fwsc"
-  },
-  {
-    "id": "tribe",
-    "name": "TRIBE",
-    "version": "0.1-beta",
-    "author": "apiel",
-    "sha256": "094c0438ebb91175271680a5d284531d7ca563af3666b22ea3428dc62b41e175",
-    "size": 609680,
-    "source": "https://github.com/apiel/fm1-tribe/tree/main",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/tribe-0.1-beta.fwsc"
-  },
-  {
-    "id": "duell",
-    "name": "DUELL",
-    "version": "0.2.20-beta",
-    "author": "OSCILL/R",
-    "sha256": "bdb12cf2b476124b7b82f2cacdf6ed6a047f33a550eb74a0434183dd527f4478",
-    "size": 610086,
-    "source": "https://github.com/oscillr/DUELL/tree/v0.2.20-beta",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/duell-0.2.20-beta.fwsc"
-  },
-  {
     "id": "skiff",
     "name": "Skiff",
-    "version": "1.2",
+    "version": "1.4",
     "author": "illuminus5",
-    "sha256": "992617692976427f4145e9c6d5f27db6710968fb0e830c4103a48238ae4de601",
-    "size": 610086,
-    "source": "https://github.com/illuminus5/skiff/tree/v1.2",
+    "sha256": "0622a752e8304777c042ccea0732ba023e1413baa6dbc8724576e2ec76de02e0",
+    "size": 610337,
+    "source": "https://github.com/illuminus5/skiff/tree/v1.4",
     "beta": false,
-    "url": "https://thefirmwarehub.com/fw/skiff-1.2.fwsc"
+    "url": "https://github.com/illuminus5/skiff/releases/download/v1.4/skiff-1.4.fwsc"
   },
   {
-    "id": "fart",
-    "name": "Fart Machine One",
-    "version": "1.0.0",
-    "author": "adamcharleswilsonmusic-code",
-    "sha256": "bccc89c0a8abcd454c63e5cbedeb7a73a2fa0147a59ee8040105bec03f017c13",
-    "size": 609657,
-    "source": "https://github.com/adamcharleswilsonmusic-code/Fart-Machine-One/tree/V1.0.0",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/fart-1.0.0.fwsc"
-  },
-  {
-    "id": "orbit",
-    "name": "ORBIT",
-    "version": "0.7.1",
-    "author": "dspaudio",
-    "sha256": "842a69569eaedd0e063e8caa13e7de5f6fb0412bed5b6fccbf11ed3dbdd8c68d",
-    "size": 610019,
-    "source": "https://github.com/dspaudio/orbit/tree/v0.7.1",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/orbit-0.7.1.fwsc"
-  },
-  {
-    "id": "felucca8",
-    "name": "Felucca 8 Patterns",
-    "version": "1.5.1_and_sequences",
-    "author": "echoe",
-    "sha256": "c5a23348d71f74e043957ba8315d2f8e19645463cc11224c64f88a588c5c9955",
-    "size": 610086,
-    "source": "https://github.com/echoe/Felucca_8_patterns/tree/1.5.1_and_sequences",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/felucca8-1.5.1_and_sequences.fwsc"
-  },
-  {
-    "id": "pigeon",
-    "name": "PIGEON",
-    "version": "0.3.1",
-    "author": "The Shrimp Blimp",
-    "sha256": "b93e37a6dfde2ab5fb73baa1cb2e623bb6e1e91c16ed3b3901b4f3f79a526f9c",
-    "size": 610990,
-    "source": "https://github.com/TheShrimpBlimp/pigeon/tree/main",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/pigeon-0.3.1.fwsc"
-  },
-  {
-    "id": "cs1",
-    "name": "CS-1",
-    "version": "2026.10.15",
-    "author": "twochannels",
-    "sha256": "903f39e881d31b33889f67c66d8ef9839358828079cb236e8441546463bcf753",
-    "size": 610113,
-    "source": "https://github.com/twochannels/CS-1/tree/main",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/cs1-2026.10.15+903f39e8.fwsc"
-  },
-  {
-    "id": "hyp1",
-    "name": "HYP-1",
-    "version": "1.5.15",
-    "author": "RedtailWorks",
-    "sha256": "280a0c8fa557a661c2ace462e9ed0e2401a9fc451540f55da8000f0a28b18e4a",
-    "size": 609657,
-    "source": "https://github.com/RustyPawz/fm1-HYP1/tree/main",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/hyp1-1.5.15.fwsc"
-  },
-  {
-    "id": "tonitor",
-    "name": "Tonitor",
-    "version": "2026.10.16",
-    "author": "Nuno Zimas",
-    "sha256": "4ac43dc8c516d8c8cdbe739ea1212735648b03b282f32855e561753498ad8392",
-    "size": 609992,
-    "source": "https://github.com/nzimas/tonitor/tree/main",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/tonitor-2026.10.16+4ac43dc8.fwsc"
-  },
-  {
-    "id": "noizdemons",
-    "name": "NOIZ DEMONS",
-    "version": "666",
-    "author": "SPIKE the Percussionist",
-    "sha256": "b1c14859d45bd8ea1d5ea6ca630083e2a647178f1a45b33865e92da7a01e9b8a",
-    "size": 610086,
-    "source": "https://github.com/SPIKE-the-Percussionist/noiz_demons/tree/v666",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/noizdemons-666.fwsc"
-  },
-  {
-    "id": "coralflower",
-    "name": "CoralFlower",
-    "version": "0.2",
-    "author": "FicusFicusov",
-    "sha256": "8b2eb5131ea31738d96a62e45b3d9873d3aa0e2b27ca821df816e7cc6feee039",
-    "size": 610313,
-    "source": "https://github.com/FicusFicusov/CoralFlower/tree/v0.2",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/coralflower-0.2.fwsc"
-  },
-  {
-    "id": "vector37",
-    "name": "Vector37",
-    "version": "0.2.2",
-    "author": "genkigenki",
-    "sha256": "01c178f69899d97b7b4205993c38542e9ef50e7c3756defc573a8b2157a52773",
-    "size": 610019,
-    "source": "https://github.com/genkigenki/Vector37",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/vector37-0.2.2.fwsc"
-  },
-  {
-    "id": "mc1",
-    "name": "MC-1",
-    "version": "1.0.1",
-    "author": "dspaudio",
-    "sha256": "a09e763e6000f25dec63eb5feeb6251389dce33bf5abe2eb4746f1f1c7091ab5",
-    "size": 610089,
-    "source": "https://github.com/dspaudio/mc-1/tree/v1.0.1",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/mc1-1.0.1.fwsc"
-  },
-  {
-    "id": "beetle",
-    "name": "BEETLE",
-    "version": "1.01d_RC",
-    "author": "Joppe Sikken (SikkenWorks)",
-    "sha256": "2b79c6bf29fa65adb6f061aae4dfea23e13b4abf3829c96aacaee1abbc1e55de",
-    "size": 610086,
-    "source": "https://github.com/SikkenWorks/BEETLE/tree/V1.01d_RC",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/beetle-1.01d_RC.fwsc"
-  },
-  {
-    "id": "min1",
-    "name": "MIN-1",
-    "version": "0.2.1",
-    "author": "Reytian",
-    "sha256": "82715d6ee18c8b12c287d614c131a4fb37f8606d811ae23301f1cd42bd4548c3",
-    "size": 609657,
-    "source": "https://github.com/Reytian/fm1-min1/tree/v0.2.1",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/min1-0.2.1.fwsc"
-  },
-  {
-    "id": "purplemonkey",
-    "name": "PurpleMonkey",
-    "version": "0.11",
-    "author": "Quixotic7",
-    "sha256": "edf961e7a85e8795747d1624b828a70bc8f6b0e065bdb019c106ee9a7d43b606",
-    "size": 609857,
-    "source": "https://github.com/Quixotic7/PurpleMonkeyFM1/tree/v0.11",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/purplemonkey-0.11.fwsc"
-  },
-  {
-    "id": "gammawave",
-    "name": "Pocket GammaWave",
-    "version": "1.0-GW",
-    "author": "ShadowTune (GammaWave Audio)",
-    "sha256": "2de2d2e7d0d375ac67c01400ff4f692b11e67bd34fd95aa2963589c0a25370f4",
-    "size": 610113,
-    "source": "https://github.com/fvalente/GammaWave-FM1/tree/v1.0-GW",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/gammawave-1.0-GW.fwsc"
-  },
-  {
-    "id": "tuna",
-    "name": "Tuna",
-    "version": "1.0-b77b159",
-    "author": "delirioux",
-    "sha256": "d94c2fcf5257f771bb26895b93095c40d9533dc6244cf326034264f6245dee0a",
-    "size": 610090,
-    "source": "https://github.com/delirioux/tuna/tree/b77b159",
-    "beta": false,
-    "url": "https://thefirmwarehub.com/fw/tuna-1.0-b77b159.fwsc"
-  },
-  {
-    "id": "frodhes",
-    "name": "Frodhes",
-    "version": "0.9.2",
-    "author": "Leonardo Mirabal",
-    "sha256": "f5facb8811bf7e15c4de1588f6dfd716681894c8064df814890b322c5f10499a",
-    "size": 610110,
-    "source": "https://github.com/leonardoMirabal/frodhes/tree/v0.9.2",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/frodhes-0.9.2.fwsc"
-  },
-  {
-    "id": "fomajam",
-    "name": "FOMAJAM",
-    "version": "0.1.2",
-    "author": "konsumer",
-    "sha256": "e3ad1a765b7b564f79eff5c7259fd789ecbca9d7ded57533d79f0b11a40144bc",
-    "size": 610110,
-    "source": "https://github.com/konsumer/fomajam/tree/v0.1.2",
-    "beta": true,
-    "url": "https://thefirmwarehub.com/fw/fomajam-0.1.2.fwsc"
+    "id": "official-open",
+    "name": "FM1 Open",
+    "version": "V14",
+    "author": "M-VAVE",
+    "url": "https://open.m-vave.com/assets/fm1/7e7b6d260163cdf9d716f7fab44f19be600edeffcd390de74370b83c917fd0c6.bin",
+    "sha256": "7e7b6d260163cdf9d716f7fab44f19be600edeffcd390de74370b83c917fd0c6",
+    "size": 492084,
+    "source": "https://github.com/m-vave/fm1_open/tree/4d266850f8a46bd5154a0d495c1f60317156c9f7",
+    "beta": false
   }
 ]

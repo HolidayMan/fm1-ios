@@ -17,16 +17,37 @@ final class FM1Tests: XCTestCase {
 }
 
 final class FirmwareCatalogTests: XCTestCase {
+    func testNativeCatalogueReleasesMatchTheLinkedEngineRegistry() {
+        let entries=CatalogFirmware.bundled
+        XCTAssertFalse(entries.isEmpty)
+        let required:Set<String>=["sloop","official-open","felucca","x0x","melodee"]
+        XCTAssertTrue(required.isSubset(of:Set(entries.map(\.id))))
+        XCTAssertTrue(entries.allSatisfy {$0.nativeEngineName != nil},"Every offered release must match an engine in the actual linked archive")
+        XCTAssertEqual(CatalogFirmware.available.map(\.id),entries.map(\.id))
+        XCTAssertTrue(entries.first {$0.id == "official-open"}?.nativeEngineName?.contains("Preview") == true)
+        XCTAssertFalse(entries.contains {$0.id == "stock"})
+        for entry in entries {
+            let altered=(entry.sha256.first == "0" ? "1" : "0")+String(entry.sha256.dropFirst())
+            XCTAssertNil(NativeFirmwareSupport.name(forSHA256:altered),"A different binary must never be offered as an included instrument")
+        }
+    }
+    func testSkiffLicenseLinksHaveBundledContentsWhenOffered()throws {
+        guard CatalogFirmware.available.contains(where:{$0.id == "skiff"}) else{return}
+        for name in ["NOTICE-native-skiff","LICENSE-native-skiff","THIRD-PARTY-native-skiff"] {
+            let url=try XCTUnwrap(Bundle.main.url(forResource:name,withExtension:nil))
+            XCTAssertFalse(try String(contentsOf:url).trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
+        }
+    }
     func testCatalogHasUniquePinnedSecureReleases() {
-        let entries = CatalogFirmware.bundled
-        XCTAssertEqual(entries.count, 53)
-        XCTAssertEqual(Set(entries.map(\.id)).count, entries.count)
-        XCTAssertTrue(entries.contains {$0.id == "stock"})
-        XCTAssertTrue(entries.contains {$0.id == "felucca"})
+        let entries=CatalogFirmware.bundled
+        XCTAssertEqual(Set(entries.map(\.id)).count,entries.count)
         for entry in entries {
             XCTAssertEqual(URL(string:entry.url)?.scheme,"https")
+            XCTAssertEqual(URL(string:entry.source)?.scheme,"https")
             XCTAssertEqual(entry.sha256.count,64)
+            XCTAssertTrue(entry.sha256.allSatisfy {"0123456789abcdef".contains($0)})
             XCTAssertTrue((960...4*1024*1024).contains(entry.size))
+            XCTAssertFalse(entry.downloadSize.isEmpty)
             XCTAssertThrowsError(try entry.validate(Data(repeating:0,count:entry.size)))
         }
     }

@@ -10,6 +10,31 @@ struct KeyTransition {
     id: u32,
     down: bool,
 }
+/// Function pointers preserve separate compiled source engines and instance-owned state.
+#[derive(Clone, Copy)]
+pub(super) struct Api {
+    pub kind: u32,
+    pub flash_size: usize,
+    pub alignment: usize,
+    pub state_size: unsafe extern "C" fn() -> u64,
+    pub state_init: unsafe extern "C" fn(*mut u8) -> i32,
+    pub bind: unsafe extern "C" fn(*mut u8),
+    pub init: unsafe extern "C" fn(),
+    pub ctl: unsafe extern "C" fn() -> u32,
+    pub rate: unsafe extern "C" fn() -> u32,
+    pub render: unsafe extern "C" fn(*mut i32, u32),
+    pub draw: unsafe extern "C" fn(*mut u16),
+    pub key: unsafe extern "C" fn(u32, i32),
+    pub release_all: unsafe extern "C" fn(),
+    pub encoder: unsafe extern "C" fn(u32, i32),
+    pub leds: unsafe extern "C" fn(*mut f32),
+    pub volume: unsafe extern "C" fn(u32),
+    pub flash_load: unsafe extern "C" fn(*const u8),
+    pub flash_copy: unsafe extern "C" fn(*mut u8),
+    pub metrics: unsafe extern "C" fn(*mut u64, u32) -> u32,
+    pub destroy: Option<unsafe extern "C" fn()>,
+}
+#[cfg(fm1_native_sloop)]
 extern "C" {
     fn slp_state_size() -> u64;
     fn slp_state_init(state: *mut u8) -> i32;
@@ -27,9 +52,42 @@ extern "C" {
     fn slp_flash_load(bytes: *const u8);
     fn slp_flash_copy(bytes: *mut u8);
     fn slp_workload_metrics(out: *mut u64, capacity: u32) -> u32;
+    fn slp_object_get(id: u32, out: *mut u8, capacity: u32) -> i32;
+    fn slp_object_put(id: u32, data: *const u8, len: u32) -> u32;
+    fn slp_arr_state(out: *mut u8, capacity: u32) -> u32;
+    fn slp_file_arrangement_write(data: *const u8, len: u32) -> u32;
+    fn slp_file_sample_read(slot: u32, out: *mut u8, capacity: u32) -> i32;
+    fn slp_file_sample_write(slot: u32, data: *const u8, len: u32) -> u32;
+    fn slp_transport(play: i32);
+    fn slp_file_commit() -> u32;
 }
 
+#[cfg(fm1_native_sloop)]
+pub(super) const SLOOP: Api = Api {
+    kind: 2,
+    flash_size: FLASH,
+    alignment: 16,
+    state_size: slp_state_size,
+    state_init: slp_state_init,
+    bind: slp_bind,
+    init: slp_init,
+    ctl: slp_ctl,
+    rate: slp_rate,
+    render: slp_render,
+    draw: slp_draw,
+    key: slp_physical_key,
+    release_all: slp_release_all,
+    encoder: slp_physical_encoder,
+    leds: slp_physical_leds,
+    volume: slp_volume,
+    flash_load: slp_flash_load,
+    flash_copy: slp_flash_copy,
+    metrics: slp_workload_metrics,
+    destroy: None,
+};
+
 pub(super) struct Native {
+    api: Api,
     state: *mut u8,
     layout: Layout,
     initialized: bool,
@@ -43,32 +101,37 @@ pub(super) struct Native {
     key_queue_high_water: u64,
 }
 impl Native {
+    #[cfg(all(test, fm1_native_sloop))]
     pub fn new(flash: &[u8]) -> Result<Self, String> {
-        if flash.len() != FLASH {
-            return Err("Native SLOOP requires a complete 1 MiB flash image.".into());
+        Self::with_api(flash, SLOOP)
+    }
+    pub(super) fn with_api(flash: &[u8], api: Api) -> Result<Self, String> {
+        if flash.len() != api.flash_size {
+            return Err("Native source engine requires its complete flash image.".into());
         }
-        let size = usize::try_from(unsafe { slp_state_size() })
+        let size = usize::try_from(unsafe { (api.state_size)() })
             .map_err(|_| "Native SLOOP state size overflow")?;
-        let layout =
-            Layout::from_size_align(size, 16).map_err(|_| "Native SLOOP state layout invalid")?;
+        let layout = Layout::from_size_align(size, api.alignment)
+            .map_err(|_| "Native SLOOP state layout invalid")?;
         let state = unsafe { alloc_zeroed(layout) };
         if state.is_null() {
             return Err("Cannot allocate native SLOOP state.".into());
         }
-        if unsafe { slp_state_init(state) } == 0 {
+        if unsafe { (api.state_init)(state) } == 0 {
             unsafe { dealloc(state, layout) };
             return Err("Native SLOOP state layout mismatch.".into());
         }
         unsafe {
-            slp_bind(state);
-            slp_flash_load(flash.as_ptr());
+            (api.bind)(state);
+            (api.flash_load)(flash.as_ptr());
         }
-        let ctl = unsafe { slp_ctl() } as usize;
-        if ctl == 0 || ctl > 2048 || unsafe { slp_rate() } != 44100 {
+        let ctl = unsafe { (api.ctl)() } as usize;
+        if ctl == 0 || ctl > 2048 || unsafe { (api.rate)() } != 44100 {
             unsafe { dealloc(state, layout) };
             return Err("Native SLOOP audio format mismatch.".into());
         }
         Ok(Self {
+            api,
             state,
             layout,
             initialized: false,
@@ -82,15 +145,88 @@ impl Native {
             key_queue_high_water: 0,
         })
     }
+    #[cfg(fm1_native_sloop)]
+    pub(super) unsafe fn file_object_read(&mut self, id: u32, out: *mut u8, capacity: u32) -> i32 {
+        self.start();
+        slp_object_get(id, out, capacity)
+    }
+    #[cfg(fm1_native_sloop)]
+    pub(super) unsafe fn file_object_write(&mut self, id: u32, data: *const u8, len: u32) -> i32 {
+        self.start();
+        let rc = slp_object_put(id, data, len) as i32;
+        if rc == 0 {
+            self.file_buffers_clear();
+        }
+        rc
+    }
+    #[cfg(fm1_native_sloop)]
+    pub(super) unsafe fn file_arrangement_read(&mut self, out: *mut u8, capacity: u32) -> i32 {
+        self.start();
+        slp_arr_state(out, capacity) as i32
+    }
+    #[cfg(fm1_native_sloop)]
+    pub(super) unsafe fn file_arrangement_write(&mut self, data: *const u8, len: u32) -> i32 {
+        self.start();
+        let rc = slp_file_arrangement_write(data, len) as i32;
+        if rc == 0 {
+            self.file_buffers_clear();
+        }
+        rc
+    }
+    #[cfg(fm1_native_sloop)]
+    pub(super) unsafe fn file_sample_read(
+        &mut self,
+        slot: u32,
+        out: *mut u8,
+        capacity: u32,
+    ) -> i32 {
+        self.start();
+        slp_file_sample_read(slot, out, capacity)
+    }
+    #[cfg(fm1_native_sloop)]
+    pub(super) unsafe fn file_sample_write(&mut self, slot: u32, data: *const u8, len: u32) -> i32 {
+        self.start();
+        let rc = slp_file_sample_write(slot, data, len) as i32;
+        if rc == 0 {
+            self.file_buffers_clear();
+        }
+        rc
+    }
+    #[cfg(fm1_native_sloop)]
+    pub(super) unsafe fn file_commit(&mut self) -> i32 {
+        self.start();
+        let rc = slp_file_commit() as i32;
+        if rc == 0 {
+            self.file_buffers_clear();
+        }
+        rc
+    }
+    #[cfg(fm1_native_sloop)]
+    fn file_buffers_clear(&mut self) {
+        self.audio.clear();
+        self.key_transitions.clear();
+        self.desired_keys = 0;
+        unsafe {
+            (self.api.release_all)();
+        }
+    }
+    #[cfg(fm1_native_sloop)]
+    pub(super) unsafe fn file_transport(&mut self, play: bool) {
+        self.start();
+        slp_transport(play as i32)
+    }
+    pub fn kind(&self) -> u32 {
+        self.api.kind
+    }
     fn bind(&self) {
-        unsafe { slp_bind(self.state) }
+        unsafe { (self.api.bind)(self.state) }
     }
     fn start(&mut self) {
         self.bind();
         if !self.initialized {
             unsafe {
-                slp_init();
-                slp_volume(self.volume)
+                (self.api.init)();
+                (self.api.volume)(self.volume)
             };
             self.initialized = true;
         }
@@ -99,7 +235,7 @@ impl Native {
         self.start();
         while self.audio.len() < out.len() {
             self.apply_key_transitions();
-            unsafe { slp_render(self.block.as_mut_ptr(), (self.block.len() / 2) as u32) };
+            unsafe { (self.api.render)(self.block.as_mut_ptr(), (self.block.len() / 2) as u32) };
             self.audio.extend(self.block.iter().copied());
         }
         for value in out.iter_mut() {
@@ -121,7 +257,7 @@ impl Native {
             self.key_transitions.pop_front();
             changed |= bit;
             unsafe {
-                slp_physical_key(event.id, i32::from(event.down));
+                (self.api.key)(event.id, i32::from(event.down));
             }
         }
     }
@@ -149,7 +285,7 @@ impl Native {
         self.start();
         if id < 14 {
             unsafe {
-                slp_physical_key(id, i32::from(down));
+                (self.api.key)(id, i32::from(down));
             }
             return;
         }
@@ -174,7 +310,7 @@ impl Native {
     pub fn encoder(&mut self, id: u32, delta: i32) {
         self.start();
         if id < 7 {
-            unsafe { slp_physical_encoder(id, delta.clamp(-32, 32)) }
+            unsafe { (self.api.encoder)(id, delta.clamp(-32, 32)) }
         }
     }
     pub fn release_all(&mut self) {
@@ -184,19 +320,19 @@ impl Native {
         // a just-loaded firmware merely because the host is suspending it.
         if self.initialized {
             self.bind();
-            unsafe { slp_release_all() }
+            unsafe { (self.api.release_all)() }
         }
     }
     pub fn volume(&mut self, value: u32) {
         self.volume = value.min(1023);
         if self.initialized {
             self.bind();
-            unsafe { slp_volume(self.volume) }
+            unsafe { (self.api.volume)(self.volume) }
         }
     }
     pub unsafe fn snapshot(&mut self, pixels: *mut u32, leds: *mut f32) -> u32 {
         self.start();
-        slp_draw(self.pixels.as_mut_ptr());
+        (self.api.draw)(self.pixels.as_mut_ptr());
         if !pixels.is_null() {
             for (i, &p) in self.pixels.iter().enumerate() {
                 let p = u16::from_be(p) as u32;
@@ -207,20 +343,20 @@ impl Native {
             }
         }
         if !leds.is_null() {
-            slp_physical_leds(leds);
+            (self.api.leds)(leds);
         }
         1
     }
     pub unsafe fn flash(&mut self, out: *mut u8, len: usize) -> usize {
         self.bind();
-        if !out.is_null() && len == FLASH {
-            slp_flash_copy(out);
+        if !out.is_null() && len == self.api.flash_size {
+            (self.api.flash_copy)(out);
         }
-        FLASH
+        self.api.flash_size
     }
     pub unsafe fn metrics(&mut self, out: *mut u64, capacity: u32) -> u32 {
         self.bind();
-        let n = slp_workload_metrics(out, capacity);
+        let n = (self.api.metrics)(out, capacity);
         if n > 13 {
             *out.add(13) = self.key_transition_drops;
         }
@@ -235,7 +371,7 @@ impl Native {
     pub fn restore(&mut self, bytes: &[u8]) -> bool {
         // New clean state reloads every persisted object and sample on its first use.
         // Failure leaves the previous instance intact.
-        match Self::new(bytes) {
+        match Self::with_api(bytes, self.api) {
             Ok(mut next) => {
                 next.volume = self.volume;
                 std::mem::swap(self, &mut next);
@@ -247,11 +383,17 @@ impl Native {
 }
 impl Drop for Native {
     fn drop(&mut self) {
-        unsafe { dealloc(self.state, self.layout) }
+        unsafe {
+            (self.api.bind)(self.state);
+            if let Some(destroy) = self.api.destroy {
+                destroy();
+            }
+            dealloc(self.state, self.layout)
+        }
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, fm1_native_sloop))]
 mod tests {
     use super::*;
     extern "C" {
@@ -278,6 +420,36 @@ mod tests {
             i += 1;
         }
         out
+    }
+    #[test]
+    fn sloop_28_punch_fade_setting_survives_complete_flash_restore() {
+        extern "C" {
+            fn slp_gcount() -> u32;
+            fn slp_global_set(id: u32, value: i32);
+            fn slp_global_get(id: u32) -> i32;
+        }
+        let mut original = Native::new(&blank()).unwrap();
+        original.start();
+        // v2.8 adds FX FADE as the final global and persists it in the MIDI
+        // settings' formerly unused bits, without changing project format6.
+        let fade = unsafe { slp_gcount() } - 1;
+        unsafe { slp_global_set(fade, 11) };
+        render_chunks(&mut original, &[512], 44100);
+        original.bind();
+        assert_eq!(unsafe { slp_global_get(fade) }, 11);
+        assert_eq!(unsafe { slp_file_commit() }, 0);
+        let mut saved = blank();
+        unsafe { original.flash(saved.as_mut_ptr(), FLASH) };
+        let mut restored = Native::new(&saved).unwrap();
+        restored.start();
+        assert_eq!(
+            unsafe { slp_global_get(fade) },
+            11,
+            "native startup must restore v2.8 FX FADE into its UI global"
+        );
+        let mut untouched = blank();
+        unsafe { restored.flash(untouched.as_mut_ptr(), FLASH) };
+        assert_eq!(untouched, saved, "startup cannot rewrite the saved flash");
     }
     #[test]
     fn fifo_and_instance_state_match_across_arbitrary_host_chunks() {

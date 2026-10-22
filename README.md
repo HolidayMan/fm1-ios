@@ -1,6 +1,8 @@
-# FM-1 for iOS
+# PocketFM for iOS
 
-Native adaptive landscape FM-1 panel (UIKit/Core Graphics + SwiftUI), with a hybrid audio engine: exact pinned SLOOP 2.7.1 can use compiled firmware source, while other packages use the pi32v2 interpreter from **fm1-emu**. No web view, factory service, account or telemetry. Downloaded packages cannot generate or modify executable host code.
+Native adaptive landscape FM-1 panel (UIKit/Core Graphics + SwiftUI), with a curated collection of eight pinned source-compiled instruments: SLOOP 2.8, Felucca 1.6.1, X0X 1.1.0, Melodee 1.4.5, FM1 Open V14 portable preview, Skiff 1.4, FoMni 0.4 and Jangada 1.0.1. The consumer interface offers only exact releases backed by a linked native engine. Arbitrary package import, Native/WASM selection, CPU controls and runtime diagnostics are removed from that interface. Existing unsupported files and separate saves remain stored. No factory service, account or telemetry.
+
+Debug research builds retain the experimental WebKit/WASM and reference interpreter backends for local regression work. Release compiles them out, excludes their resources and audits the finished app; see [native store build](docs/native-store-build.md). Signed archive validation and distribution-rights clearance remain separate release gates. See [store preparation](docs/app-store-preparation.md), [native engines](docs/native-firmware-engines.md), [Skiff](docs/native-skiff.md) and [experimental research engine](docs/web-engine.md). No App Store approval is implied.
 
 Unofficial iOS prototype for M-VAVE FM-1. Not affiliated with M-VAVE. Tested locally on iPhone 12; not an App Store release.
 
@@ -10,49 +12,71 @@ Screenshots document earlier development builds; current palettes were corrected
 
 ## Build
 
-Xcode, Rust, Python 3 (project and optional static-kernel generation). No Swift packages or external Rust crates.
+Xcode, Rust and Python 3. No Swift packages or runtime external Rust crates.
+Release builds are native-only and require all pinned compiled engines prepared
+first. Follow [native family](docs/native-family.md),
+[official portable engine](docs/native-official-preview.md),
+[Skiff](docs/native-skiff.md) and [native expansion](docs/native-expansion.md).
+With the exact local source trees verified, build all eight engines:
 
 ```sh
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+export FM1_NATIVE_SLOOP="$PWD/Research/NativeSloop/upstream-sloop-2.8"
+export FM1_NATIVE_FAMILY="$PWD/Research/NativeFamilyOct22"
+export FM1_NATIVE_OFFICIAL_PREVIEW="$PWD/Research/NativeOfficial14/upstream-fm1-open"
+export FM1_NATIVE_SKIFF="$PWD/Research/NativeSkiff14/upstream-skiff"
+export FM1_NATIVE_EXPANSION="$PWD/Research/NativeExpansion"
 ./scripts/build.sh simulator
 # Unsigned arm64 device build:
 ./scripts/build.sh device
 ```
 
-Open `FM1.xcodeproj`; choose your own signing team for a physical device. Build the Rust target first. Current simulator library supports Apple Silicon.
+Xcode builds the matching Rust archive before compiling the app. Release uses
+`target/store/` and `store-native` with default research features disabled; its
+Cargo graph contains no CPU/SoC/ISA interpreter dependencies. Open `FM1.xcodeproj`
+and select your signing team for a device/archive. Simulator builds support
+Apple Silicon. See [the exact archive recipe](docs/native-store-build.md).
 
-The commands above build the generic interpreter. An optimized local build additionally requires private generated kernels and their verified manifest; set `FM1_STATIC_KERNELS` to the absolute header path when building Rust. `Core/tools/build_static_core.py` verifies those inputs and freezes a target-specific archive with a source/hash receipt. The generator is in `Vendor/fm1-core/tools/generate_static_kernels.py`; firmware-derived inputs and outputs remain local under ignored `Research/Generated`. No runtime JIT is used.
+Missing, changed or unprepared pins fail the build rather than silently falling
+back. Sources/generated headers and external packages stay under ignored
+`Research/`. Optional private interpreter specialization captures are only for
+research and are not required by the compiled source engines.
 
-A local hybrid build can additionally compile exact SLOOP 2.7.1 source for its
+A local Debug research build can additionally compile exact SLOOP 2.8 source for its
 pinned package, with the binary interpreter retained for every unmatched package.
-For the fast pinned SLOOP backend (build-only Pillow dependency):
+Debug also requires the explicitly prepared private pinned `App/WebEngine/engine.wasm`; `scripts/verify_web_engine.py` rejects missing/changed modules and never downloads a replacement. For the pinned SLOOP research backend (build-only Pillow dependency):
 
 ```sh
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install Pillow
-python3 Core/native/prepare.py "$PWD/Research/NativeSloop/upstream-sloop-2.7.1"
-FM1_NATIVE_SLOOP="$PWD/Research/NativeSloop/upstream-sloop-2.7.1" ./scripts/build.sh simulator
-# Use the same environment variable with ./scripts/build.sh device for iPhone.
+python3 Core/native/prepare.py "$PWD/Research/NativeSloop/upstream-sloop-2.8"
+FM1_NATIVE_SLOOP="$PWD/Research/NativeSloop/upstream-sloop-2.8" \
+  xcodebuild -project FM1.xcodeproj -scheme FM1 -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' -derivedDataPath build/Research \
+  CODE_SIGNING_ALLOWED=NO build
 ```
 
 This native backend does not require the optional private static-kernel captures.
-Other firmware remains interpreted and can exceed the real-time budget.
+The generic Rust interpreter and experimental WASM remain available to local
+research tools. The consumer app rejects unmatched packages.
 
 This addresses the recorded-sequencer CPU bottleneck. The source-native backend
 has GPL-3.0 notices and a different hardware/main-loop model; see
 [docs/native-sloop.md](docs/native-sloop.md) for build pins, save compatibility,
-measurements and limits. No runtime JIT is used.
+measurements and limits. No native executable-memory JIT is used by these Rust/source-native routes. The opt-in experimental WebKit engine compiles WASM inside its dedicated Worker.
 
 ## Play
 
-1. Choose firmware → pick one of 53 pinned catalogue releases, or Import .fwsc from Files.
-2. Catalogue downloads are checked against their recorded size and SHA-256, then validated by the core before entering the private library. Import remains available for other releases.
+1. Open the firmware library and choose a supported compiled release. The resource download size is shown before starting; first installation needs a network connection.
+2. Downloads are checked against their exact size and SHA-256, then checked against the linked native registry. Arbitrary Files import is not offered in the consumer app.
 3. Play chords on the 27 keys; drag knobs vertically; hold hardware buttons for firmware-specific combinations. Tap the LCD to enlarge it.
-4. The remembered/default installed firmware starts automatically on app launch. Pause/resume with the top transport; an explicit pause survives background/foreground transitions within the running app. Master controls the firmware's ADC. The speaker control is a separate output mute.
-5. Each imported version has its own emulated flash. Saves inside the firmware persist; progress auto-checkpoints every five seconds, on firmware changes and on pause. Leaving the foreground temporarily pauses audio; returning resumes it unless explicitly paused. System interruptions and removed audio outputs retain their own resume rules.
+4. The remembered/default supported installed firmware starts automatically. Pause/resume with the top transport; an explicit pause survives background/foreground transitions within the running app. Master controls the firmware's ADC. The speaker control is a separate output mute.
+5. Each release keeps its own saved sounds. Leaving the foreground temporarily pauses audio; returning resumes it unless explicitly paused. System interruptions and removed outputs retain their own resume rules. Previous research-engine saves and unsupported packages are preserved but not exposed as playable choices.
+6. Use the side arrow to collapse/restore the transport, and Panel color to select one of six finishes. About contains playing, storage, privacy and license information. CPU frequency and execution-mode controls are not part of the consumer interface.
+7. The folder below the side arrow opens Projects and files, including when the header is collapsed. Its native glass controls and surrounding sheets follow the selected panel finish. SLOOP supports named project copies, checked import/export and workspace backups, WAV sample trim/audition/import into USR1–4, and stereo WAV rendering from a separate copy of the current project. MIDI-file export and live recording remain unavailable. See [file workflows and limits](docs/project-files.md).
 
-The signed app includes catalogue metadata, not firmware binaries. It downloads selected releases on demand from M-VAVE and FM-1 Firmware Hub. The snapshot covers 52 Hub releases plus Stock V15; it is not an exhaustive claim about every firmware on the internet. The stock update does not include the factory presets: upstream generates a small substitute bank. Do not describe this as the original 128 factory sounds or perfect hardware audio parity.
+The current development bundle includes catalogue metadata, not external firmware packages. It downloads exact selected releases on demand. The source-native implementations are already compiled into the signed application; downloaded package instructions are not executed by this native-only flow. Final store packaging, self-contained first launch, privacy URLs and redistribution rights remain explicit release gates. FM1 Open Preview uses the manufacturer's portable sound engine, may differ from the hardware and does not include its original factory sound bank.
 
 ## Check
 
@@ -66,6 +90,13 @@ cargo run -p fm1-ios-core --release --example firmware_smoke -- /path/to/Firmwar
 The smoke test runs the actual binary, presses/releases a note, checks a nonblank LCD and nonzero audio, round-trips flash and writes a WAV beside the input. It measures desktop interpreter throughput, not iPhone latency or listening quality.
 
 Choose Panel color for the six manufacturer finishes; the choice persists. The native touch layout uses the available screen area instead of fixed physical proportions.
+
+The side chevron hides or restores the top controls; the choice persists and
+playback continues. Hiding the row gives the panel more height and enlarges the
+LCD where space permits. Each finish has matching lamp/pressed-key colors and
+contrasting legends; firmware-generated LCD colors remain unchanged. Static
+panel artwork is cached by size, screen scale and finish, while LCD, LEDs and
+knob markers update as separate compositing layers.
 
 The generic interpreter exceeds the real-time CPU budget for Felucca and SLOOP. Optional build-time specializations substantially reduce that cost while retaining exact interpreter fallback for other code. See `docs/performance-next-step.md` for the architecture and `docs/performance-lab.md` for controlled simulator measurements; simulator timing is not physical iPhone timing.
 

@@ -32,3 +32,7 @@ The stock update omits the unit's original preset area. The emulator supplies it
 - Catalogue metadata, authors and source/release links ship in the app. Firmware binaries remain in ignored Research/ and are downloaded on demand by the app. No source or binary has been published.
 - Manufacturer color choices are Black, Purple, Orange, Black-Green, Cool Gray, White-Blue, from https://www.m-vave.com/products-data.js (FM-1 product entry). Rendered colors are approximations.
 - Draft Apple inquiry is docs/apple-review-letter.md. It has not been sent, and no App Review approval is claimed.
+
+## Experimental phone mode — 2026-10-18
+
+The owner explicitly requested a Native SLOOP ↔ experimental WASM switch. The native SwiftUI/UIKit panel, source-native default and binary-interpreter fallback remain. The opt-in exact SLOOP package route now uses the pinned generic pi32v2-to-WASM translator inside a WKWebView dedicated Worker, with WebKit-managed WASM compilation. Its AudioWorklet consumes bounded PCM only; no emulation or compilation runs in that callback. This is a specific extension of the initial interpreter-only/no-native-JIT architecture, not an App Store approval or universal performance claim. Full local-origin, source/module provenance and isolated-save behavior are recorded in [web-engine.md](web-engine.md).

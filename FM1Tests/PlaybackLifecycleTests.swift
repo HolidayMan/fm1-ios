@@ -54,20 +54,34 @@ final class PlaybackPolicyTests:XCTestCase {
         let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
         let suite="LifecycleTests.\(UUID().uuidString)",preferences=UserDefaults(suiteName:suite)!
-        let destination=directory.appendingPathComponent("SLOOP-2.7.1.fwsc")
-        if valid {
-            let source=Instrument()
-            guard let firmware=source.firmwares.first(where:{$0.name == "SLOOP-2.7.1"}) else {
-                try? FileManager.default.removeItem(at:directory)
-                throw XCTSkip("Requires the dedicated simulator's installed SLOOP fixture; never downloads")
+        let destination=directory.appendingPathComponent("SLOOP-2.8.fwsc")
+        let documents=FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0]
+        let sources=[documents.appendingPathComponent("Native16Packages"),documents.appendingPathComponent("Firmwares")]
+        var bytes:Data?
+        for folder in sources {
+            for file in (try? FileManager.default.contentsOfDirectory(at:folder,includingPropertiesForKeys:nil)) ?? [] where file.pathExtension == "fwsc" {
+                guard let data=try? Data(contentsOf:file) else {continue}
+                let kind=data.withUnsafeBytes {instrument_native_kind_for_fwsc($0.bindMemory(to:UInt8.self).baseAddress,data.count)}
+                if kind == 2 {bytes=data;break}
             }
-            try FileManager.default.copyItem(at:firmware.url,to:destination)
-            let flash=firmware.url.deletingPathExtension().appendingPathExtension("flash")
-            if FileManager.default.fileExists(atPath:flash.path) {try FileManager.default.copyItem(at:flash,to:directory.appendingPathComponent("SLOOP-2.7.1.flash"))}
-        } else {try Data([0]).write(to:destination)}
+            if bytes != nil {break}
+        }
+        guard let bytes else {
+            try? FileManager.default.removeItem(at:directory)
+            throw XCTSkip("Requires the exact linked local SLOOP fixture; never downloads")
+        }
+        try bytes.write(to:destination)
         let worker=DispatchQueue(label:"LifecycleTests.worker")
-        return Fixture(model:Instrument(directory:directory,preferences:preferences,worker:worker),worker:worker,directory:directory,preferences:preferences,suite:suite)
+        let model=Instrument(directory:directory,preferences:preferences,worker:worker,nativeOnly:true)
+        let scanned=XCTNSPredicateExpectation(predicate:NSPredicate {_,_ in model.selected != nil},object:nil)
+        XCTAssertEqual(XCTWaiter.wait(for:[scanned],timeout:15),.completed)
+        // Test a real race: content becomes invalid after exact startup probing,
+        // before the serial loader reads it. Store scanning must never offer
+        // invalid bytes merely to trigger an error in a test.
+        if !valid {try Data([0]).write(to:destination)}
+        return Fixture(model:model,worker:worker,directory:directory,preferences:preferences,suite:suite)
     }
+
     private func idle(_ model:Instrument,running:Bool,file:StaticString=#filePath,line:UInt=#line) {
         let done=XCTNSPredicateExpectation(predicate:NSPredicate {_,_ in !model.busy && model.running == running},object:nil)
         XCTAssertEqual(XCTWaiter.wait(for:[done],timeout:15),.completed,"Playback did not settle: \(model.status), \(model.message ?? "no error")",file:file,line:line)
@@ -84,7 +98,7 @@ final class PlaybackPolicyTests:XCTestCase {
         XCTAssertTrue(f.model.busy)
         f.model.sceneChanged(active:false);f.model.sceneChanged(active:true)
         f.worker.resume();idle(f.model,running:true)
-        XCTAssertEqual(f.model.selected?.name,"SLOOP-2.7.1")
+        XCTAssertEqual(f.model.selected?.name,"SLOOP-2.8")
         f.worker.suspend()
         f.model.sceneChanged(active:false);f.model.sceneChanged(active:true)
         f.worker.resume();idle(f.model,running:true)

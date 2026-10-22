@@ -29,11 +29,20 @@ final class FirmwareSelectionTests: XCTestCase {
         // Deliberately invalid bytes: a paused selection must not boot/import them.
         for fw in [stock, sloop] {try Data([0]).write(to: directory.appendingPathComponent(fw.id).appendingPathExtension("fwsc"))}
         let initial = Instrument(directory: directory, preferences: preferences)
+        #if FM1_RESEARCH
         XCTAssertEqual(initial.selected?.id, sloop.id)
+        #else
+        XCTAssertNil(initial.selected,"Store startup does not offer invalid/unsupported package bytes")
+        #endif
         XCTAssertFalse(initial.running);XCTAssertFalse(initial.busy);XCTAssertNil(initial.message)
         preferences.set(stock.id, forKey: FirmwareSelection.preferenceKey)
         let relaunched = Instrument(directory: directory, preferences: preferences)
+        #if FM1_RESEARCH
         XCTAssertEqual(relaunched.selected?.id, stock.id)
+        #else
+        XCTAssertNil(relaunched.selected,"Remembered names cannot bypass the exact native registry")
+        XCTAssertEqual(preferences.string(forKey:FirmwareSelection.preferenceKey),stock.id)
+        #endif
         XCTAssertFalse(relaunched.running);XCTAssertNil(relaunched.screen)
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path).count, 2)
     }

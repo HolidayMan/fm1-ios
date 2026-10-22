@@ -1,3 +1,8 @@
+> Historical universal-firmware inquiry. The current native-only preparation is
+> described in [app-store-preparation.md](app-store-preparation.md) and
+> [app-review-notes-draft.md](app-review-notes-draft.md). This letter was not sent
+> and does not describe the current consumer interface.
+
 # Draft App Review inquiry — not sent
 
 To: Apple Developer Support / App Review

@@ -53,7 +53,8 @@ final class ControlFeedbackTests:XCTestCase {
         let released=XCTNSPredicateExpectation(predicate:NSPredicate{_,_ in key.accessibilityValue == "Released"},object:nil)
         XCTAssertEqual(XCTWaiter.wait(for:[released],timeout:2),.completed)
         XCTAssertEqual(buttons,1,"Release must not emit feedback")
-        _ = UIGraphicsImageRenderer(bounds:panel.bounds).image {_ in panel.draw(panel.bounds)}
+        panel.refreshDisplay()
+        _ = UIGraphicsImageRenderer(bounds:panel.bounds).image {context in panel.layer.render(in:context.cgContext)}
         XCTAssertEqual(buttons,1,"Drawing must not emit feedback")
         time=0.2;XCTAssertTrue(key.accessibilityActivate());XCTAssertEqual(buttons,2)
     }
