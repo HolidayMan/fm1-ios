@@ -1,10 +1,10 @@
 # PocketFM for iOS
 
-Native adaptive landscape FM-1 panel (UIKit/Core Graphics + SwiftUI), with a curated collection of fourteen pinned source-compiled instruments: SLOOP 2.8, Felucca 1.6.1, X0X 1.1.0, Melodee 1.4.5, FM1 Open V14 portable preview, Skiff 1.4, FoMni 0.4, Jangada 1.0.1, CoralFlower 0.5, AMB-1 1.3, GHOULBOX 2.4, LOOM-8 0.9.3, Hortator 0.25.0 and JIANT FM 0.9.9-par12. The consumer interface offers only exact releases backed by a linked native engine. Arbitrary package import, Native/WASM selection, CPU controls and runtime diagnostics are removed from that interface. Existing unsupported files and separate saves remain stored. No factory service, account or telemetry.
+Native adaptive landscape FM-1 panel (UIKit/Core Graphics + SwiftUI), with a curated collection of fifteen pinned source-compiled instruments: SLOOP 2.8, Felucca 1.6.1, X0X 1.1.0, Melodee 1.4.5, FM1 Open V14 portable preview, Skiff 1.4, FoMni 0.4, Jangada 1.0.1, CoralFlower 0.5, AMB-1 1.3, GHOULBOX 2.4, LOOM-8 0.9.3, Hortator 0.25.0, JIANT FM 0.9.9-par12 and ChoralRoot 0.27. The consumer interface offers only exact releases backed by a linked native engine. Arbitrary package import, Native/WASM selection, CPU controls and runtime diagnostics are removed from that interface. Existing unsupported files and separate saves remain stored. No factory service, account or telemetry.
 
-Debug research builds retain the experimental WebKit/WASM and reference interpreter backends for local regression work. Release compiles them out, excludes their resources and audits the finished app; see [native store build](docs/native-store-build.md). Signed archive validation and distribution-rights clearance remain separate release gates. See [store preparation](docs/app-store-preparation.md), [native engines](docs/native-firmware-engines.md), [Skiff](docs/native-skiff.md) and [experimental research engine](docs/web-engine.md). See [community instruments](docs/native-community.md) for the six additions, save behavior and exact source pins. No App Store approval is implied.
+Debug research builds retain the experimental WebKit/WASM and reference interpreter backends for local regression work. Release compiles them out, excludes their resources and audits the finished app; see [native store build](docs/native-store-build.md). Signed archive validation and distribution-rights clearance remain separate release gates. See [store preparation](docs/app-store-preparation.md), [native engines](docs/native-firmware-engines.md), [Skiff](docs/native-skiff.md) and [experimental research engine](docs/web-engine.md). See [community instruments](docs/native-community.md) for the seven additions, save behavior and exact source pins. No App Store approval is implied.
 
-Unofficial iOS prototype for M-VAVE FM-1. Not affiliated with M-VAVE. Earlier builds were tested on iPhone 12. The six community additions require separate physical-device acceptance after host/simulator validation; this is not an App Store release.
+Unofficial iOS prototype for M-VAVE FM-1. Not affiliated with M-VAVE. Earlier builds were tested on iPhone 12. The community additions require separate physical-device acceptance after host/simulator validation; this is not an App Store release.
 
 ![FM-1 interface](docs/screenshots/fm1-iphone12-blackgreen-v2.png)
 
@@ -17,7 +17,7 @@ Release builds are native-only and require all pinned compiled engines prepared
 first. Follow [native family](docs/native-family.md),
 [official portable engine](docs/native-official-preview.md),
 [Skiff](docs/native-skiff.md) and [native expansion](docs/native-expansion.md).
-With the exact local source trees verified, build all fourteen engines:
+With the exact local source trees verified, build all fifteen engines:
 
 ```sh
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim

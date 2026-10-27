@@ -20,7 +20,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ROOT_FILES = {".gitignore", "AGENTS.md", "README.md", "LICENSE", "NOTICE", "Cargo.toml", "Cargo.lock"}
+ROOT_FILES = {".gitignore", ".gitattributes", "AGENTS.md", "README.md", "LICENSE", "NOTICE", "Cargo.toml", "Cargo.lock"}
 SOURCE_DIRS = {"App", "Core", "Vendor", "Tests", "FM1Tests", "FM1UITests", "scripts"}
 SOURCE_SUFFIXES = {".swift", ".rs", ".c", ".h", ".inc", ".def", ".py", ".sh", ".toml",
                    ".json", ".md", ".txt", ".plist", ".xcprivacy", ".png"}
@@ -45,7 +45,9 @@ def selected(name):
     if path.is_absolute() or ".." in path.parts or any(part in FORBIDDEN_PARTS for part in path.parts):
         # Preserve original asset provenance README notices, never those assets.
         return name in {"Core/native/licenses/melodee/assets/cz1-factory/README.md",
-                        "Core/native/licenses/melodee/assets/prophet5-factory/README.md"}
+                        "Core/native/licenses/melodee/assets/prophet5-factory/README.md",
+                        "Core/native/licenses/choralroot/assets/cz1-factory/README.md",
+                        "Core/native/licenses/choralroot/assets/prophet5-factory/README.md"}
     if path.suffix.lower() in FORBIDDEN_SUFFIXES or path.name.startswith(".env"):
         return False
     if name in ROOT_FILES or name in BUILD_DOCS:

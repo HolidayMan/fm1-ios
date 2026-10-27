@@ -161,7 +161,7 @@ impl Instrument {
                 // Its application/DSP are source-compiled; only user saves may
                 // subsequently restore musical data. The official portable
                 // preview likewise owns a separate logical store.
-                if matches!(api.kind, 5 | 6 | 11..=16) {
+                if matches!(api.kind, 5 | 6 | 11..=17) {
                     return native_sloop::Native::with_api(&vec![0xff; api.flash_size], api)
                         .map(Self::Native);
                 }

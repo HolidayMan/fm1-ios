@@ -11,7 +11,7 @@ def main():
     descriptors=json.loads((HERE/'community.lock.json').read_text())['firmwares']
     for d in descriptors:
         if a.kind and d['id']!=a.kind:continue
-        src=root/d['id']
+        src=root/d.get('source_subdir',d['id'])
         if not src.exists():
             root.mkdir(parents=True,exist_ok=True)
             if d.get('tag') and d['tag']!=d['commit']:

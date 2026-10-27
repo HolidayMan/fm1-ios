@@ -15,7 +15,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
-	<string>30</string>
+	<string>31</string>
 	<key>FM1PrivacyPolicyURL</key>
 	<string>https://github.com/HolidayMan/fm1-ios/blob/main/docs/privacy-policy.md</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

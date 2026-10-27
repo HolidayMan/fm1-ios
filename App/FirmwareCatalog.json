@@ -158,5 +158,17 @@
     "author": "juanjiant-bit",
     "beta": true,
     "summary": "Live groovebox with song arrangements. Enable Restore Last to resume edited work."
+  },
+  {
+    "id": "choralroot",
+    "name": "ChoralRoot",
+    "author": "Quixotic7",
+    "version": "0.27",
+    "size": 610313,
+    "sha256": "a09f9e19b66a91351de37c532e0d15cdc03ff9e9c82a0b152cdb66ca3fdc0326",
+    "url": "https://github.com/Quixotic7/ChoralRootFM1/releases/download/v0.27/choralroot-0.27.fwsc",
+    "source": "https://github.com/Quixotic7/ChoralRootFM1/tree/v0.27",
+    "beta": false,
+    "summary": "Orchid-style chord instrument with bass, voicing and a looper. CZ-1 and Prophet-5 factory banks are replaced with INIT sounds."
   }
 ]

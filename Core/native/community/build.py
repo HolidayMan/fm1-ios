@@ -75,7 +75,7 @@ def main():
     out=a.out.resolve();out.mkdir(parents=True,exist_ok=True)
     tc=Toolchain(a.target,a.sdk,llvm=True);objects=[]
     for d in selected:
-        source=(a.source/d['id']).resolve()
+        source=(a.source/d.get('source_subdir',d['id'])).resolve()
         repo=NATIVE.parents[1]
         for path in (source,out):
             if not path.is_relative_to(repo) or subprocess.run(['git','-C',str(repo),'check-ignore','-q',str(path)]).returncode:
@@ -84,12 +84,15 @@ def main():
         work=out/d['id'];upstream=work/'upstream';work.mkdir(exist_ok=True)
         obj=work/(d['id']+'.o');cache=work/'verified-object.json'
         key=hashlib.sha256(json.dumps(d,sort_keys=True).encode())
-        for file in [Path(__file__),NATIVE/'fel_state.py',NATIVE/'expansion_build.py',NATIVE/'target_config.py',NATIVE/'felucca_core.h',NATIVE/'felucca_core_api.h',HERE/(d['id']+'.c'),HERE/(d['id']+'_adapt.py'),HERE/'fm1base_adapt.py']:
+        for file in [Path(__file__),NATIVE/'fel_state.py',NATIVE/'expansion_build.py',NATIVE/'target_config.py',NATIVE/'felucca_core.h',NATIVE/'felucca_core_api.h',HERE/(d['id']+'.c'),HERE/(d['id']+'_adapt.py'),HERE/'fm1base_adapt.py',HERE/'choralroot_init_bank.py',NATIVE/'melodee_init_bank.py']:
             if file.exists():key.update(file.read_bytes())
         key.update(json.dumps([a.target,a.sdk,str(tc.cc),tc.flags],sort_keys=True).encode())
         fingerprint=key.hexdigest()
         previous=json.loads(cache.read_text()) if cache.exists() else {}
         if obj.exists() and previous.get('inputs')==fingerprint and previous.get('object')==hashlib.sha256(obj.read_bytes()).hexdigest():
+            if d.get('derived_soundset'):
+                from choralroot_init_bank import audit_object
+                audit_object(obj,d)
             objects.append(obj);continue
         if upstream.exists():shutil.rmtree(upstream)
         for part in d['copy_dirs']:
@@ -97,9 +100,15 @@ def main():
         adapt=HERE/(d['id']+'_adapt.py')
         if adapt.exists():
             spec=importlib.util.spec_from_file_location('community_adapt',adapt);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);module.adapt(upstream)
+        resources=source/'build/gen'
+        if d.get('derived_soundset'):
+            from choralroot_init_bank import derive
+            resources=work/'resources'
+            if resources.exists():shutil.rmtree(resources)
+            derive(upstream,resources,source,d)
         wrapper=work/'native';wrapper.mkdir(exist_ok=True);unit=wrapper/(d['id']+'.c');shutil.copy2(HERE/(d['id']+'.c'),unit)
         marker=work/'state-marker.h';marker.write_text('#include <stdint.h>\n#include <stddef.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <string.h>\n#include <math.h>\n#include <time.h>\n#pragma clang section bss="'+tc.bss+'" data="'+tc.data+'"\n')
-        flags=['-target',TRIPLES[a.target],*tc.flags,'-O2','-std=gnu11','-fwrapv','-fno-strict-aliasing','-ffp-contract=off','-w','-include',str(marker),'-DFEL_PREFIX='+d['prefix'],*tc.sections,'-I'+str(NATIVE),'-I'+str(HERE),'-I'+str(source/'build/gen')]
+        flags=['-target',TRIPLES[a.target],*tc.flags,'-O2','-std=gnu11','-fwrapv','-fno-strict-aliasing','-ffp-contract=off','-w','-include',str(marker),'-DFEL_PREFIX='+d['prefix'],*tc.sections,'-I'+str(NATIVE),'-I'+str(HERE),'-I'+str(resources)]
         flags += ['-I'+str(upstream/x) for x in d.get('include_dirs',[])]
         flags += d.get('defines',[])
         bitcodes=[]
@@ -109,6 +118,9 @@ def main():
         run(tc.link,'-S',*bitcodes,'-o',merged);namespaced.write_text(namespace_ir(merged.read_text(),d['prefix']))
         run(sys.executable,NATIVE/'fel_state.py',namespaced,state,d['prefix'])
         run(tc.cc,'-target',TRIPLES[a.target],*tc.flags,'-O2','-ffp-contract=off','-c',state,'-o',obj);objects.append(obj)
+        if d.get('derived_soundset'):
+            from choralroot_init_bank import audit_object
+            audit_object(obj,d)
         cache.write_text(json.dumps({'inputs':fingerprint,'object':hashlib.sha256(obj.read_bytes()).hexdigest()})+'\n')
     run(*tc.ar,'crs',out/'libfm1_native_community.a',*objects)
     (out.parent/'community_registry.rs').write_text(registry(selected))

@@ -45,9 +45,9 @@ class CommunityBuildTests(unittest.TestCase):
     def test_curated_ids_fingerprints_and_abi_prefixes_are_unique(self):
         ds=json.loads((NATIVE/'community/community.lock.json').read_text())['firmwares']
         for key in ['id','kind','prefix']:
-            self.assertEqual(len({d[key] for d in ds}),6)
-        self.assertEqual({d['kind'] for d in ds},set(range(11,17)))
-        self.assertEqual(len({d['package']['sha256'] for d in ds}),6)
+            self.assertEqual(len({d[key] for d in ds}),7)
+        self.assertEqual({d['kind'] for d in ds},set(range(11,18)))
+        self.assertEqual(len({d['package']['sha256'] for d in ds}),7)
         for d in ds:
             self.assertEqual(len(bytes.fromhex(d['package']['sha256'])),32)
             self.assertFalse(any('__pycache__' in p or p.endswith('.pyc') for p in d['inputs']))

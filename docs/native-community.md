@@ -1,8 +1,9 @@
 # Community instruments — October 27, 2026
 
-Six source-native instruments expand the consumer catalogue from eight to fourteen.
-CoralFlower is the requested chord instrument inspired by Telepathic Instruments’
-Orchid. These are portable compilations of pinned upstream firmware source, not a
+Build 29 added six source-native instruments, expanding the catalogue from eight
+to fourteen. Build 31 adds ChoralRoot FM-1 0.27, the Orchid-inspired chord
+instrument requested by the owner, bringing the total to fifteen. CoralFlower
+remains available as a separate fork with its own interface and saved data. These are portable compilations of pinned upstream firmware source, not a
 new universal firmware interpreter or a runtime WASM/compiler feature.
 
 | Instrument | Version | Exact source commit |
@@ -13,12 +14,12 @@ new universal firmware interpreter or a runtime WASM/compiler feature.
 | [LOOM-8](https://github.com/charlesvestal/fm1-loom) | 0.9.3 | `92b4bf2c080b0a4172c07e4cf499dd6d557c3f5f` |
 | [Hortator](https://github.com/DeadActive/hortator) | 0.25.0 | `9aa704bb9129516ec9d86c056dff5995282093b2` |
 | [JIANT FM](https://github.com/juanjiant-bit/JIANT) | 0.9.9-par12 | `527c7e462a1542cbbde2c2cbf6b4bf151954127d` |
+| [ChoralRoot FM-1](https://github.com/Quixotic7/ChoralRootFM1) | 0.27 | `070bd306ed63c7d08f09bb6ea937262b52b1a6c0` |
 
 ## Selection
 
 The October 27 GitHub API snapshot showed JIANT 182 stars, AMB-1 104,
-GHOULBOX 72, LOOM-8 49 and Hortator 33. CoralFlower was explicitly requested
-and is listed by the community directory with 15 stars. These are interest
+GHOULBOX 72, LOOM-8 49 and Hortator 33. CoralFlower is listed by the community directory with 15 stars. These are interest
 proxies, not download counts, active users or a strict top-six ranking.
 The [community directory](https://fm1-editor.com/firmware/) and the linked
 primary repositories were checked for current versions. Existing eight native
@@ -37,7 +38,7 @@ symbols are namespaced. The current source-native bridge renders on its serial
 worker, never in the audio callback. Source fm1-base CPU2 jobs execute through
 its serial fallback in their original continuation order.
 
-New package hashes map to kinds 11–16; unknown or changed packages are rejected
+New package hashes map to kinds 11–17; unknown or changed packages are rejected
 by a native-only Release build. First use still downloads and verifies the exact
 public package. Its machine instructions are not executed. Each release keeps
 its own complete 1 MiB physical NOR image. Opening another firmware does not
@@ -55,7 +56,18 @@ JIANT retains its original Restore Last OFF default. Enable SYSTEM → RESTORE
 LAST to resume edited work, or use JIANT’s own saved projects. Its checkpoint
 writes only the private autosave object when that original preference permits.
 GHOULBOX similarly checkpoints its private current-work object. SLOOP-specific
-file tools are not advertised for these six unrelated storage formats.
+file tools are not advertised for these unrelated storage formats.
+
+## ChoralRoot addition
+
+ChoralRoot 0.27 uses its own upstream chord interface, root/chord key layouts,
+voicings, bass, looper and effect routing. It is compiled independently from
+CoralFlower and keeps a separate saved-data image. The author identifies it as
+inspired by Orchid; this is not an affiliation or a claim of exact Orchid sound.
+
+Casio CZ-1 and Sequential Prophet factory-bank data are replaced with INIT data
+in the native build, following the existing Melodee approach. The engines and
+controls remain available, but those third-party factory sounds are not supplied.
 
 ## Preparation and source delivery
 
@@ -81,7 +93,7 @@ archive; upstream trees are acquired separately at those exact pins.
 
 ## Credits and assets
 
-CoralFlower, GHOULBOX, Hortator and JIANT retain their GPL-3.0 notices; AMB-1 and
+CoralFlower, ChoralRoot, GHOULBOX, Hortator and JIANT retain their GPL-3.0 notices; AMB-1 and
 LOOM-8 retain MPL-2.0 file notices and their dependency notices. Complete texts
 and component credits are bundled in `NOTICE-native-community`,
 `LICENSE-native-community` and `THIRD-PARTY-native-community`.
@@ -126,3 +138,28 @@ Panel LED masks are retained, but hardware PWM/dimming/breathing timing is mappe
 to portable-host brightness rather than simulated cycle by cycle. In particular,
 JIANT intentionally illuminates its available keys as idle guides; those guides
 are not evidence of held notes or a stuck key.
+
+## ChoralRoot build 31 verification
+
+The fifteen-engine host workspace passed 91 tests; the native-only release
+library passed 31. Seven focused ChoralRoot checks cover actual multi-voice
+chords and nonzero PCM, exact PCM/LCD/NOR parity over 300 blocks against the
+upstream serial portable host with the same INIT derivation, independent
+instances, physical save controls and fresh-process reopening of edited private
+CZ/P5 tones. The compiled-object factory-payload audit passed.
+
+The simulator unit suite passed 116 cases, with seven explicit stress/performance
+opt-ins skipped and no failures (123 total). The iPhone 12 simulator UI workflow
+passed real downloads of ChoralRoot and
+CoralFlower, Lock/MAJ/root playing, long-SAVE, paused reset/recovery cancellation
+and confirmation, switching releases, and reopening installed ChoralRoot after
+app relaunch. Its isolated fixture intentionally gets fresh test preferences
+on launch, so reopening explicitly selects the installed release. Native device
+callbacks and direct three-voice PCM are separate platform checks: the app's
+SLOOP-only workload decoder is not used to label ChoralRoot counters.
+
+Receipts are `Research/ChoralRoot31/report.json`,
+`Research/Choral31/UnitsFinal.xcresult` and
+`Research/Choral31/ChoralUIFinal.xcresult`. These do not establish physical-iPhone
+listening/latency acceptance. TestFlight processing and group availability are
+verified separately.

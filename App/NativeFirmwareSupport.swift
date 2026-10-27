@@ -23,6 +23,7 @@ enum NativeFirmwareSupport {
         case 14:return "LOOM-8"
         case 15:return "Hortator"
         case 16:return "JIANT FM"
+        case 17:return "ChoralRoot · INIT banks"
         default:return nil
         }
     }

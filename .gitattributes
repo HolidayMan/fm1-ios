@@ -1,0 +1,3 @@
+# Preserve pinned upstream license notice bytes, including original line endings.
+App/THIRD-PARTY-native-community -text
+Core/native/licenses/choralroot/** -text

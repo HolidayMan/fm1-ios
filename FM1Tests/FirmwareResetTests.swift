@@ -128,10 +128,10 @@ import CryptoKit
         XCTAssertEqual(try original(token),previous,"Restore must not consume its recovery copy")
     }
 
-    func testAllFourteenNativeFormatsResetAndRestoreWhilePaused()async throws {
-        let required=(2...9).map{UInt32($0)}+(11...16).map{UInt32($0)}
+    func testAllFifteenNativeFormatsResetAndRestoreWhilePaused()async throws {
+        let required=(2...9).map{UInt32($0)}+(11...17).map{UInt32($0)}
         let installed=try packages()
-        guard required.allSatisfy({installed[$0] != nil}) else {throw XCTSkip("Requires all fourteen exact native packages in the isolated simulator")}
+        guard required.allSatisfy({installed[$0] != nil}) else {throw XCTSkip("Requires all fifteen exact native packages in the isolated simulator")}
         for kind in required {
             let f=try await fixture(kind:kind)
             do {

@@ -39,3 +39,9 @@ CoralFlower’s Orchid reference identifies an inspiration, not affiliation with
 CoralFlower’s disabled CZ/QUAD factory sound banks are not compiled into this app.
 
 Hortator retains its four original manual save slots. JIANT retains its original Restore Last preference. SLOOP file tools are not offered for unrelated instruments.
+
+ChoralRoot 0.27 — Quixotic7
+https://github.com/Quixotic7/ChoralRootFM1
+Source commit: 070bd306ed63c7d08f09bb6ea937262b52b1a6c0
+Package SHA-256: a09f9e19b66a91351de37c532e0d15cdc03ff9e9c82a0b152cdb66ca3fdc0326
+Compiled with PocketFM INIT replacements for Casio CZ-1 and Sequential Prophet factory banks. Original VA/FM voices, engines and user-saved patch formats are retained.
