@@ -100,12 +100,15 @@ impl Interpreter {
         count / 2
     }
 }
+#[cfg(fm1_native_community)]
+mod native_community;
 #[cfg(any(
     fm1_native_sloop,
     fm1_native_family,
     fm1_native_official_preview,
     fm1_native_expansion,
-    fm1_native_skiff
+    fm1_native_skiff,
+    fm1_native_community
 ))]
 mod native_family;
 #[cfg(any(
@@ -113,7 +116,8 @@ mod native_family;
     fm1_native_family,
     fm1_native_official_preview,
     fm1_native_expansion,
-    fm1_native_skiff
+    fm1_native_skiff,
+    fm1_native_community
 ))]
 mod native_sloop;
 #[cfg(any(
@@ -122,6 +126,7 @@ mod native_sloop;
     fm1_native_official_preview,
     fm1_native_expansion,
     fm1_native_skiff,
+    fm1_native_community,
     test
 ))]
 mod sha256;
@@ -134,7 +139,8 @@ pub enum Instrument {
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_community
     ))]
     Native(native_sloop::Native),
 }
@@ -145,7 +151,8 @@ impl Instrument {
             fm1_native_family,
             fm1_native_official_preview,
             fm1_native_expansion,
-            fm1_native_skiff
+            fm1_native_skiff,
+            fm1_native_community
         ))]
         if cfg!(feature = "store-native") || std::env::var_os("FM1_FORCE_INTERPRETER").is_none() {
             if let Some(api) = native_family::for_package(bytes) {
@@ -154,7 +161,7 @@ impl Instrument {
                 // Its application/DSP are source-compiled; only user saves may
                 // subsequently restore musical data. The official portable
                 // preview likewise owns a separate logical store.
-                if matches!(api.kind, 5 | 6) {
+                if matches!(api.kind, 5 | 6 | 11..=16) {
                     return native_sloop::Native::with_api(&vec![0xff; api.flash_size], api)
                         .map(Self::Native);
                 }
@@ -190,7 +197,8 @@ impl Instrument {
                 fm1_native_family,
                 fm1_native_official_preview,
                 fm1_native_expansion,
-                fm1_native_skiff
+                fm1_native_skiff,
+                fm1_native_community
             ))]
             Self::Native(_) => String::new(),
         }
@@ -204,7 +212,8 @@ impl Instrument {
                 fm1_native_family,
                 fm1_native_official_preview,
                 fm1_native_expansion,
-                fm1_native_skiff
+                fm1_native_skiff,
+                fm1_native_community
             ))]
             Self::Native(m) => m.render(out),
         }
@@ -244,7 +253,8 @@ pub unsafe extern "C" fn instrument_backend(m: *const Instrument) -> u32 {
             fm1_native_family,
             fm1_native_official_preview,
             fm1_native_expansion,
-            fm1_native_skiff
+            fm1_native_skiff,
+            fm1_native_community
         ))]
         Some(Instrument::Native(_)) => 2,
     }
@@ -261,7 +271,8 @@ pub unsafe extern "C" fn instrument_native_kind_for_fwsc(data: *const u8, len: u
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_community
     ))]
     if let Some(api) = native_family::for_package(std::slice::from_raw_parts(data, len)) {
         return api.kind;
@@ -297,7 +308,8 @@ pub unsafe extern "C" fn instrument_native_kind_for_sha256(data: *const u8, len:
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_community
     ))]
     if let Some(api) = native_family::for_digest(digest, 0) {
         return api.kind;
@@ -311,7 +323,8 @@ pub unsafe extern "C" fn instrument_native_kind(m: *const Instrument) -> u32 {
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_community
     ))]
     if let Some(Instrument::Native(m)) = m.as_ref() {
         return m.kind();
@@ -333,7 +346,8 @@ pub unsafe extern "C" fn instrument_workload_metrics(
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_community
     ))]
     if let Some(Instrument::Native(m)) = m.as_mut() {
         return m.metrics(out, capacity.min(16));
@@ -408,7 +422,8 @@ pub unsafe extern "C" fn instrument_key(m: *mut Instrument, id: u32, down: bool)
                 fm1_native_family,
                 fm1_native_official_preview,
                 fm1_native_expansion,
-                fm1_native_skiff
+                fm1_native_skiff,
+                fm1_native_community
             ))]
             Instrument::Native(m) => m.key(id, down),
         }
@@ -430,7 +445,8 @@ pub unsafe extern "C" fn instrument_release_all(m: *mut Instrument) {
                 fm1_native_family,
                 fm1_native_official_preview,
                 fm1_native_expansion,
-                fm1_native_skiff
+                fm1_native_skiff,
+                fm1_native_community
             ))]
             Instrument::Native(m) => m.release_all(),
         }
@@ -454,7 +470,8 @@ pub unsafe extern "C" fn instrument_encoder(m: *mut Instrument, id: u32, delta: 
                 fm1_native_family,
                 fm1_native_official_preview,
                 fm1_native_expansion,
-                fm1_native_skiff
+                fm1_native_skiff,
+                fm1_native_community
             ))]
             Instrument::Native(m) => m.encoder(id, delta),
         }
@@ -474,7 +491,8 @@ pub unsafe extern "C" fn instrument_volume(m: *mut Instrument, value: u32) {
                 fm1_native_family,
                 fm1_native_official_preview,
                 fm1_native_expansion,
-                fm1_native_skiff
+                fm1_native_skiff,
+                fm1_native_community
             ))]
             Instrument::Native(m) => m.volume(value),
         }
@@ -494,7 +512,8 @@ pub unsafe extern "C" fn instrument_snapshot(
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_community
     ))]
     if let Instrument::Native(m) = m {
         return m.snapshot(pixels, leds);
@@ -538,7 +557,8 @@ pub unsafe extern "C" fn instrument_flash(m: *mut Instrument, out: *mut u8, len:
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_community
     ))]
     if let Instrument::Native(m) = m {
         return m.flash(out, len);
@@ -578,7 +598,8 @@ pub unsafe extern "C" fn instrument_restore(
         fm1_native_family,
         fm1_native_official_preview,
         fm1_native_expansion,
-        fm1_native_skiff
+        fm1_native_skiff,
+        fm1_native_community
     ))]
     if let Instrument::Native(m) = m {
         return m.restore(std::slice::from_raw_parts(data, len));

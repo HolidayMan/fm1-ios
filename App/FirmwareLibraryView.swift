@@ -5,13 +5,14 @@ struct CatalogFirmware: Codable, Identifiable {
     let id, name, version, author, url, sha256, source: String
     let size: Int
     let beta: Bool
+    var summary:String? = nil
     var nativeEngineName:String? {NativeFirmwareSupport.name(forSHA256:sha256)}
     var filename: String { "\(name)-\(version)".replacingOccurrences(of: "/", with: "-") }
     static let bundled: [Self] = {
         UIResponsivenessProbe.shared.measure("Catalogue.decodeAndSort") {
         guard let url = Bundle.main.url(forResource: "FirmwareCatalog", withExtension: "json"),
               let data = try? Data(contentsOf: url), let entries = try? JSONDecoder().decode([Self].self, from: data) else { return [] }
-        let priority=["sloop":0,"official-open":1,"felucca":2,"x0x":3,"melodee":4]
+        let priority=["sloop":0,"official-open":1,"coralflower":2,"jiant":3,"felucca":4,"x0x":5,"melodee":6]
         let ranks=Dictionary(uniqueKeysWithValues:entries.map {entry in
             (entry.id,entry.nativeEngineName == nil ? (entry.id == "stock" ? 5 : 6) : (priority[entry.id] ?? 6))
         })
@@ -61,7 +62,7 @@ struct FirmwareLibraryView: View {
     private var finish:PanelFinish {PanelFinish(rawValue:finishName) ?? .black}
     private var theme:FM1SurfaceTheme {FM1SurfaceTheme(finish:finish)}
     private let catalog = CatalogFirmware.available
-    private var filtered: [CatalogFirmware] { catalog.filter { query.isEmpty || "\($0.name) \($0.author)".localizedCaseInsensitiveContains(query) } }
+    private var filtered: [CatalogFirmware] { catalog.filter { query.isEmpty || "\($0.name) \($0.author) \($0.summary ?? "")".localizedCaseInsensitiveContains(query) } }
     var body: some View {
         UIResponsivenessProbe.shared.measure("FirmwareLibrary.description") {
         NavigationStack {
@@ -99,6 +100,7 @@ struct FirmwareLibraryView: View {
                             VStack(alignment:.leading,spacing:4) {
                                 Text(entry.name).font(.headline)
                                 Text("\(entry.version) · \(entry.author)").font(.caption).foregroundStyle(.secondary)
+                                if let summary=entry.summary {Text(summary).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)}
                                 Text("\(entry.downloadSize) download").font(.caption).foregroundStyle(.secondary)
                                     .accessibilityIdentifier("Download size \(entry.id)")
                                 if entry.id == "official-open" {

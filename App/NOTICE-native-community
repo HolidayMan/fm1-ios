@@ -1,0 +1,41 @@
+PocketFM community instrument credits
+
+These instruments run source-compiled portable engines. Their original code and third-party notices retain their individual licenses. Firmware packages identify the pinned releases; downloaded instructions are not executed.
+
+CoralFlower 0.5
+https://github.com/FicusFicusov/CoralFlower
+Source commit: b5ceb997be330c8a420958eb8f4e0f4b3ca084c2
+Package SHA-256: ab7d0744eed0c83d62be39da9d63c5618e1bccc94de2931a9145a7d4b723b0bb
+
+AMB-1 1.3
+https://github.com/charlesvestal/fm1-amb
+Source commit: 188b0a42f20a547864e732ae5ea1339d0fbcf395
+Package SHA-256: 59dbc6b688e3a64bb0da912c1e40890da7bc214b2a3269704627369b776707cb
+
+GHOULBOX 2.4
+https://github.com/jasonpersinger/ghoulbox-fm1-dungeon-synth
+Source commit: 9f2b9a22e456d7fe9552b40f7a1d0c13200913bb
+Package SHA-256: 92630ae278d4a0b4233ff2512b62ad9b5dbe976a4c9083046222d9293a8df749
+
+LOOM-8 0.9.3
+https://github.com/charlesvestal/fm1-loom
+Source commit: 92b4bf2c080b0a4172c07e4cf499dd6d557c3f5f
+Package SHA-256: c02cc1b8c99d87796acf51f36724de8ade98728168367fa01995ab5c8dace8ab
+
+Hortator 0.25.0
+https://github.com/DeadActive/hortator
+Source commit: 9aa704bb9129516ec9d86c056dff5995282093b2
+Package SHA-256: fa5fab0ece3a2c5f626edcbda7a359dad2ddcc28bec7c3669a9c2fd8802c5d26
+
+Hügelton procedural sample pack: CC0-1.0 under the original rights holder’s pinned grant; the fork’s older licensing paragraph is superseded for these generated sounds.
+https://github.com/hugelton/Felucca/blob/440e62ce8a33d9bb285ab6bbca9a0fd50e459648/LICENSING.md
+
+JIANT FM 0.9.9-par12
+https://github.com/juanjiant-bit/JIANT
+Source commit: 527c7e462a1542cbbde2c2cbf6b4bf151954127d
+Package SHA-256: 9738f473f8b5bed4ba6aafb6132f520d03e09683521a32090701fbf4eb6abb3c
+
+CoralFlower’s Orchid reference identifies an inspiration, not affiliation with Telepathic Instruments.
+CoralFlower’s disabled CZ/QUAD factory sound banks are not compiled into this app.
+
+Hortator retains its four original manual save slots. JIANT retains its original Restore Last preference. SLOOP file tools are not offered for unrelated instruments.

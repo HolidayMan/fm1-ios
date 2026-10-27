@@ -38,6 +38,21 @@ final class FirmwareCatalogTests: XCTestCase {
             XCTAssertFalse(try String(contentsOf:url).trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
         }
     }
+    func testCommunityInstrumentsAreLinkedAndHaveBundledAttribution()throws {
+        let expected:Set<UInt32>=Set(11...16)
+        let entries=CatalogFirmware.bundled.filter {entry in
+            let bytes=Array(entry.sha256.utf8)
+            return bytes.withUnsafeBufferPointer {expected.contains(instrument_native_kind_for_sha256($0.baseAddress,$0.count))}
+        }
+        XCTAssertEqual(entries.count,expected.count,"All six curated community engines must actually be linked")
+        XCTAssertTrue(entries.contains {$0.name == "CoralFlower"})
+        XCTAssertTrue(entries.contains {$0.name == "JIANT FM"})
+        XCTAssertTrue(entries.allSatisfy {$0.summary?.isEmpty == false},"New instruments explain their musical purpose")
+        for name in ["NOTICE-native-community","LICENSE-native-community","THIRD-PARTY-native-community"] {
+            let url=try XCTUnwrap(Bundle.main.url(forResource:name,withExtension:nil))
+            XCTAssertFalse(try String(contentsOf:url).trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
+        }
+    }
     func testCatalogHasUniquePinnedSecureReleases() {
         let entries=CatalogFirmware.bundled
         XCTAssertEqual(Set(entries.map(\.id)).count,entries.count)

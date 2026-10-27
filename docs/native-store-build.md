@@ -30,7 +30,7 @@ privacy metadata and Apple's signed archive validation remain separate checks.
 
 Prepare the exact pinned source trees with the existing native preparation tools
 before running these commands. No build step fetches missing source or firmware.
-For the October 22 source pins, explicitly select:
+For the pinned engines and October 27 community additions, explicitly select:
 
 ```sh
 export FM1_NATIVE_SLOOP="$PWD/Research/NativeSloop/upstream-sloop-2.8"
@@ -38,12 +38,13 @@ export FM1_NATIVE_FAMILY="$PWD/Research/NativeFamilyOct22"
 export FM1_NATIVE_SKIFF="$PWD/Research/NativeSkiff14/upstream-skiff"
 export FM1_NATIVE_OFFICIAL_PREVIEW="$PWD/Research/NativeOfficial14/upstream-fm1-open"
 export FM1_NATIVE_EXPANSION="$PWD/Research/NativeExpansion"
+export FM1_NATIVE_COMMUNITY="$PWD/Research/NativeCommunityOct27"
 python3 scripts/generate_project.py
 xcodebuild -project FM1.xcodeproj -scheme FM1 -configuration Release \
-  -destination 'generic/platform=iOS' -derivedDataPath build/Store26 \
-  -archivePath Research/Store26/FM1.xcarchive \
+  -destination 'generic/platform=iOS' -derivedDataPath build/Store29 \
+  -archivePath Research/Store29/FM1.xcarchive \
   DEVELOPMENT_TEAM=YOUR_TEAM archive
-python3 scripts/audit_store_artifact.py Research/Store26/FM1.xcarchive/Products/Applications/FM1.app
+python3 scripts/audit_store_artifact.py Research/Store29/FM1.xcarchive/Products/Applications/FM1.app
 ```
 
 Use the existing authorized signing identity/team. Do not add simulator signing

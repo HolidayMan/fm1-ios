@@ -1,6 +1,6 @@
 # PocketFM native source delivery
 
-This is the source and build route for the native eight-engine consumer app.
+This is the source and build route for the native fourteen-engine consumer app.
 `SOURCE-MANIFEST.json` in each release-source archive records the actual app
 version/build, repository base commit and SHA-256 of every included file. A dirty
 base commit is explicitly labelled: the file manifest, not the base commit alone,
@@ -15,7 +15,7 @@ generators/adaptations, locks, licenses/notices; project-generation/build/audit
 scripts and source tests. It includes the original generated app icon used by the
 app. The generated Xcode project is included and can also be regenerated.
 
-The eight unmodified upstream engine source trees are **separate public downloads**
+The pinned upstream engine source trees are **separate public downloads**
 at immutable commits, recorded below and in `SOURCE-MANIFEST.json`. They are not
 duplicated in the application-source archive. Their GPL C source, original
 asset inputs/fonts and resource generators are required source inputs, not optional
@@ -90,12 +90,14 @@ python3 Core/native/prepare_family.py "$PWD/Research/NativeFamily"
 python3 Core/native/skiff_prepare.py "$PWD/Research/NativeSkiff/upstream-skiff"
 python3 Core/native/expansion_prepare.py "$PWD/Research/NativeExpansion"
 python3 Core/native/official_preview_prepare.py "$PWD/Research/NativeOfficial/upstream-fm1-open"
+python3 Core/native/community/prepare.py "$PWD/Research/NativeCommunityOct27"
 
 export FM1_NATIVE_SLOOP="$PWD/Research/NativeSloop/upstream-sloop-2.8"
 export FM1_NATIVE_FAMILY="$PWD/Research/NativeFamily"
 export FM1_NATIVE_SKIFF="$PWD/Research/NativeSkiff/upstream-skiff"
 export FM1_NATIVE_EXPANSION="$PWD/Research/NativeExpansion"
 export FM1_NATIVE_OFFICIAL_PREVIEW="$PWD/Research/NativeOfficial/upstream-fm1-open"
+export FM1_NATIVE_COMMUNITY="$PWD/Research/NativeCommunityOct27"
 ```
 
 The helpers clone only missing upstream checkouts, verify pins and component
@@ -163,3 +165,12 @@ this source-download page at stable public URLs. Verify that each upstream pin
 remains downloadable. The source package is prepared locally until that public
 readback is recorded. No source offer should claim an archive exists at an
 unpublished URL or promise a different future revision.
+
+## Community additions — build 29
+
+The six additions and their submodule/source-acquisition pins are documented in
+[native-community.md](native-community.md) and in the source manifest. Prepare
+them with `Core/native/community/prepare.py` and set `FM1_NATIVE_COMMUNITY` along
+with the five existing source variables. Their sources are separate public
+downloads at immutable commits; the native adapters, descriptor, component
+notices and build tooling are included in this source archive.

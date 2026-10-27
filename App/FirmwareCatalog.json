@@ -86,5 +86,77 @@
     "size": 492084,
     "source": "https://github.com/m-vave/fm1_open/tree/4d266850f8a46bd5154a0d495c1f60317156c9f7",
     "beta": false
+  },
+  {
+    "id": "coralflower",
+    "version": "0.5",
+    "size": 610313,
+    "sha256": "ab7d0744eed0c83d62be39da9d63c5618e1bccc94de2931a9145a7d4b723b0bb",
+    "url": "https://github.com/FicusFicusov/CoralFlower/releases/download/v0.5/coralflower-0.5.fwsc",
+    "source": "https://github.com/FicusFicusov/CoralFlower/tree/v0.5",
+    "name": "CoralFlower",
+    "author": "FicusFicusov",
+    "beta": false,
+    "summary": "Chord instrument inspired by Orchid, with bass and a growing pixel flower."
+  },
+  {
+    "id": "amb1",
+    "name": "AMB-1",
+    "author": "Charles Vestal",
+    "version": "1.3",
+    "size": 610108,
+    "sha256": "59dbc6b688e3a64bb0da912c1e40890da7bc214b2a3269704627369b776707cb",
+    "url": "https://github.com/charlesvestal/fm1-amb/releases/download/v1.3/amb-1.3.fwsc",
+    "source": "https://github.com/charlesvestal/fm1-amb/tree/v1.3",
+    "beta": false,
+    "summary": "Generative ambient instrument with evolving voices and hands-on controls."
+  },
+  {
+    "id": "ghoulbox",
+    "name": "GHOULBOX",
+    "sha256": "92630ae278d4a0b4233ff2512b62ad9b5dbe976a4c9083046222d9293a8df749",
+    "size": 610086,
+    "source": "https://github.com/jasonpersinger/ghoulbox-fm1-dungeon-synth/tree/ghoulbox-v2.4",
+    "url": "https://github.com/jasonpersinger/ghoulbox-fm1-dungeon-synth/releases/download/ghoulbox-v2.4/ghoulbox-2.4.fwsc",
+    "version": "2.4",
+    "author": "jasonpersinger",
+    "beta": false,
+    "summary": "Dungeon-synth groovebox with drums, textures and performance effects."
+  },
+  {
+    "id": "loom8",
+    "name": "LOOM-8",
+    "author": "Charles Vestal",
+    "version": "0.9.3",
+    "size": 611496,
+    "sha256": "c02cc1b8c99d87796acf51f36724de8ade98728168367fa01995ab5c8dace8ab",
+    "url": "https://github.com/charlesvestal/fm1-loom/releases/download/v0.9.3/loom-0.9.3.fwsc",
+    "source": "https://github.com/charlesvestal/fm1-loom/tree/v0.9.3",
+    "beta": false,
+    "summary": "Eight-track groovebox with pattern weaving, scenes and songs."
+  },
+  {
+    "id": "hortator",
+    "name": "Hortator",
+    "sha256": "fa5fab0ece3a2c5f626edcbda7a359dad2ddcc28bec7c3669a9c2fd8802c5d26",
+    "size": 609649,
+    "source": "https://github.com/DeadActive/hortator/tree/drum-v0.25.0",
+    "url": "https://github.com/DeadActive/hortator/releases/download/drum-v0.25.0/hortator-0.25.0.fwsc",
+    "version": "0.25.0",
+    "author": "DEADACTIVE",
+    "beta": true,
+    "summary": "Eight-track drum machine with performance effects. Save projects inside the firmware."
+  },
+  {
+    "id": "jiant",
+    "name": "JIANT FM",
+    "sha256": "9738f473f8b5bed4ba6aafb6132f520d03e09683521a32090701fbf4eb6abb3c",
+    "size": 610280,
+    "source": "https://github.com/juanjiant-bit/JIANT/tree/527c7e462a1542cbbde2c2cbf6b4bf151954127d",
+    "url": "https://juanjiant-bit.github.io/JIANT/firmware/felucca-v0.9.9-par12-527c7e4.fwsc",
+    "version": "0.9.9-par12",
+    "author": "juanjiant-bit",
+    "beta": true,
+    "summary": "Live groovebox with song arrangements. Enable Restore Last to resume edited work."
   }
 ]

@@ -389,6 +389,10 @@ pub(super) fn for_digest(digest: [u8; 32], len: usize) -> Option<Api> {
     {
         return Some(skiff::API);
     }
+    #[cfg(fm1_native_community)]
+    if let Some(api) = super::native_community::for_digest(digest, len) {
+        return Some(api);
+    }
     None
 }
 

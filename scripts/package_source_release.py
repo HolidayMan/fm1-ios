@@ -27,7 +27,7 @@ SOURCE_SUFFIXES = {".swift", ".rs", ".c", ".h", ".inc", ".def", ".py", ".sh", ".
 BUILD_DOCS = {"docs/source-release.md", "docs/store26-rights-audit.md",
               "docs/native-store-build.md",
               "docs/native-sloop.md", "docs/native-family.md", "docs/native-expansion.md",
-              "docs/native-official-preview.md", "docs/native-skiff.md", "docs/app-icon.md"}
+              "docs/native-official-preview.md", "docs/native-skiff.md", "docs/native-community.md", "docs/app-icon.md"}
 FORBIDDEN_PARTS = {".git", "Research", "target", "build", "build-device", "__pycache__",
                    "xcuserdata", "WebEngine", "sdk/lib", "cz1-factory", "prophet5-factory"}
 FORBIDDEN_SUFFIXES = {".fwsc", ".wasm", ".bin", ".a", ".o", ".dylib", ".syx", ".fxp",
@@ -93,7 +93,7 @@ def upstream_record(identity, descriptor, lock_name):
               "source_url": repository + "/tree/" + commit,
               "source_archive_url": repository + "/archive/" + commit + ".tar.gz",
               "lock_file": lock_name, "source_acquisition": "separate pinned Git checkout"}
-    for key in ["tag", "generated_headers_sha256", "notices_sha256", "submodules", "derived_soundset"]:
+    for key in ["tag", "generated_headers_sha256", "notices_sha256", "submodules", "submodule_sources", "derived_soundset", "additional_source_notices", "asset_grant_evidence"]:
         if key in descriptor:
             result[key] = descriptor[key]
     if identity == "felucca":
@@ -111,6 +111,7 @@ def manifest(root, files):
     records = [upstream_record("sloop", upstream["sloop"], native + "upstream.lock.json")]
     records += [upstream_record(d["id"], d, native + "family.lock.json") for d in family["firmwares"]]
     records += [upstream_record(d["id"], d, native + "expansion.lock.json") for d in expansion["firmwares"]]
+    records += [upstream_record(d["id"], d, native + "community/community.lock.json") for d in read(native + "community/community.lock.json")["firmwares"]]
     records += [upstream_record("skiff", read(native + "skiff.lock.json"), native + "skiff.lock.json"),
                 upstream_record("fm1-open", read(native + "official_preview.lock.json"), native + "official_preview.lock.json")]
     wrapper = upstream_record("virtual-fm1-wrapper-origin", upstream["wrapper_origin"], native + "upstream.lock.json")

@@ -11,7 +11,8 @@ fn main() {
                 "FM1_NATIVE_FAMILY",
                 "FM1_NATIVE_SKIFF",
                 "FM1_NATIVE_EXPANSION",
-                "FM1_NATIVE_OFFICIAL_PREVIEW"
+                "FM1_NATIVE_OFFICIAL_PREVIEW",
+                "FM1_NATIVE_COMMUNITY"
             ]
             .iter()
             .any(|key| env::var_os(key).is_some()),
@@ -38,6 +39,12 @@ fn main() {
         "fm1_native_expansion",
     );
     build_extra("FM1_NATIVE_SKIFF", "skiff_build.py", "fm1_native_skiff");
+    println!("cargo:rustc-check-cfg=cfg(fm1_native_community)");
+    build_extra(
+        "FM1_NATIVE_COMMUNITY",
+        "community/build.py",
+        "fm1_native_community",
+    );
     build_family();
     println!("cargo:rerun-if-env-changed=FM1_NATIVE_SLOOP");
     println!("cargo:rerun-if-changed=native");

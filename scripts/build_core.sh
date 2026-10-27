@@ -14,6 +14,7 @@ if [ "${CONFIGURATION:-}" = Release ]; then
     : "${FM1_NATIVE_FAMILY:?Prepare and explicitly select the pinned native family sources}"
     : "${FM1_NATIVE_SKIFF:?Prepare and explicitly select the pinned Skiff source}"
     : "${FM1_NATIVE_EXPANSION:?Prepare and explicitly select the pinned expansion sources}"
+    : "${FM1_NATIVE_COMMUNITY:?Prepare and explicitly select the pinned community sources}"
     : "${FM1_NATIVE_OFFICIAL_PREVIEW:?Prepare and explicitly select the pinned official source}"
     CARGO_TARGET_DIR="$PWD/target/store" cargo build -p fm1-ios-core --lib --release --target "$target" --no-default-features --features store-native
 else

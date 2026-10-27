@@ -125,6 +125,16 @@ struct InstrumentView:View {
                     Section("Playing and saving") {
                         Text("Choose a release from the firmware library. Its download size is shown before you start. Downloads need an internet connection; installed releases can be played offline.")
                         Text("Each release keeps its own saved sounds on this device. Switching releases keeps those saves. Audio pauses when you leave the app or disconnect the audio output.")
+                        if CatalogFirmware.available.contains(where:{$0.id == "hortator"}) {
+                            Text("Hortator uses four project slots. Stop playback, open SAVE → PROJECT, choose slot A–D with Knob 1, then turn Knob 4 twice and wait for SAVED before switching instruments or closing. The last saved slot opens next time.")
+                                .accessibilityIdentifier("Hortator saving information")
+                        }
+                    }
+                    if CatalogFirmware.available.contains(where:{$0.id == "jiant"}) {
+                        Section("JIANT saving") {
+                            Text("JIANT starts with Restore Last turned off, as on the device. Enable SYSTEM → RESTORE LAST inside JIANT to resume edited work next time, or save and load projects using JIANT’s own controls.")
+                                .accessibilityIdentifier("JIANT saving information")
+                        }
                     }
                     if CatalogFirmware.available.contains(where:{$0.id == "official-open"}) {
                         Section("FM1 Open preview") {
@@ -141,6 +151,9 @@ struct InstrumentView:View {
                         NavigationLink("fm1-emu · MIT") {LicenseNoticeView(title:"fm1-emu",resource:"LICENSE-fm1-emu",finish:finish)}
                         NavigationLink("SLOOP · credits") {LicenseNoticeView(title:"SLOOP credits",resource:"NOTICE-native-sloop",finish:finish)}
                         NavigationLink("SLOOP · GNU GPL version 3") {LicenseNoticeView(title:"GNU GPL version 3",resource:"LICENSE-native-sloop",finish:finish)}
+                        NavigationLink("New instruments · credits") {LicenseNoticeView(title:"Community instrument credits",resource:"NOTICE-native-community",finish:finish)}
+                        NavigationLink("New instruments · licenses") {LicenseNoticeView(title:"Community licenses",resource:"LICENSE-native-community",finish:finish)}
+                        NavigationLink("New instruments · third-party credits") {LicenseNoticeView(title:"Community third-party credits",resource:"THIRD-PARTY-native-community",finish:finish)}
                         NavigationLink("Firmware authors · credits") {LicenseNoticeView(title:"Firmware credits",resource:"NOTICE-native-family",finish:finish)}
                         NavigationLink("FM1 Open · credits") {LicenseNoticeView(title:"FM1 Open credits",resource:"NOTICE-native-official-preview",finish:finish)}
                         NavigationLink("FM1 Open · license") {LicenseNoticeView(title:"FM1 Open license",resource:"LICENSE-native-official-preview",finish:finish)}

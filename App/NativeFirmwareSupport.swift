@@ -17,6 +17,12 @@ enum NativeFirmwareSupport {
         case 7:return "Skiff"
         case 8:return "FoMni"
         case 9:return "Jangada"
+        case 11:return "CoralFlower"
+        case 12:return "AMB-1"
+        case 13:return "GHOULBOX"
+        case 14:return "LOOM-8"
+        case 15:return "Hortator"
+        case 16:return "JIANT FM"
         default:return nil
         }
     }
