@@ -974,3 +974,20 @@ Owner Beta,1invitation. Screenshot: Research/Sloop25/testflight-testing.png.
 API service activation and Developer-key creation were separately owner-approved;
 private file retrieval is pending manual Chrome download. API authentication is
 not claimed verified. No public release or physical-phone acceptance claimed.
+
+## Selected-instrument reset — 1.0 (30)
+
+The top-bar reset arrow asks before clearing the selected native release's saved
+data. Same-session saved-data recovery is available through its context menu;
+unsaved RAM edits are not promised recoverable. See `instrument-reset.md`.
+
+Seven new simulator transaction tests passed, including paused reset/restore for
+all fourteen native engines (the preview uses 536576 bytes, others 1 MiB), typed
+SLOOP sample reset/reopen/restore, preservation of other releases and named copies,
+backup failure, audio-start rollback/retry, tamper rejection and a late pause plus
+failed commit. Three UI cases passed: disabled empty selection and compact header,
+paused CoralFlower reset/cancel/recovery/resume, and playing SLOOP reset/switching.
+The initial run exposed an existing-folder recovery error; the final run verifies
+its fix. Receipts: `Research/Reset30/UnitsFinal.xcresult` and
+`Research/Reset30/ResetUIFinal.xcresult`. These are simulator results, not physical
+iPhone acceptance. TestFlight availability is recorded separately.

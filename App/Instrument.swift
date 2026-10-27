@@ -12,6 +12,30 @@ struct Firmware: Identifiable, Equatable {
     let url: URL
 }
 
+/// In-memory authorization for one checked, app-owned saved-data recovery copy.
+/// It deliberately cannot be reconstructed from an arbitrary Files URL.
+struct FirmwareResetRecovery:Sendable,Identifiable,Equatable {
+    let id:UUID
+    let firmwareID:String
+    let packageSHA256:String
+    let backupURL:URL
+    fileprivate let receiptSHA256:String
+}
+
+private struct FirmwareResetReceipt:Codable {
+    let schemaVersion:Int
+    let id:UUID
+    let firmwareID:String
+    let firmwareName:String
+    let packageSHA256:String
+    let packageVersion:String
+    let nativeKind:UInt32
+    let originalSHA256:String
+    let originalBytes:Int
+    let autosaveFilename:String
+    let createdAt:Date
+}
+
 /// All emulator state belongs to the worker queue. The source-node callback only
 /// reads already-produced samples and signals a coalesced refill; it never emulates.
 final class Instrument: ObservableObject {
@@ -59,6 +83,7 @@ final class Instrument: ObservableObject {
     private var generation = 0
     private var playing = false
     private var activeID: String?
+    private var nativeReplacementUncommitted=false // Worker only: candidate cannot checkpoint before its sole commit.
     private var lastSnapshot = CFAbsoluteTimeGetCurrent()
     private var lastSave = CFAbsoluteTimeGetCurrent()
     private static let framesPerBuffer = 512
@@ -894,6 +919,7 @@ final class Instrument: ObservableObject {
         }
     }
     private func saveFlash(waitForWrite: Bool = false) {
+        guard !nativeReplacementUncommitted else{return}
         guard let id=activeID else{return}
         let snapshot:Data
         do {guard let bytes=try activeFlash() else{return};snapshot=bytes}
@@ -1079,6 +1105,164 @@ struct AudioGapSmoother {
 }
 
 extension Instrument {
+    /// Reset only this release's native saved-data image. App project copies,
+    /// other releases and host playback/volume/mute preferences are untouched.
+    @MainActor func resetCurrentFirmware()async throws->FirmwareResetRecovery {
+        try await replaceCurrentNativeSavedData(restoring:nil)
+    }
+    /// A session token authorizes restoring only its exact selected package.
+    @MainActor func restoreFirmwareReset(_ recovery:FirmwareResetRecovery)async throws {
+        _=try await replaceCurrentNativeSavedData(restoring:recovery)
+    }
+    private static func resetDigest(_ bytes:Data)->String {
+        SHA256.hash(data:bytes).map{String(format:"%02x",$0)}.joined()
+    }
+    private func checkedResetRoot()throws->URL {
+        let root=directory.resolvingSymlinksInPath().appendingPathComponent("ResetRecovery",isDirectory:true)
+        let manager=FileManager.default
+        guard (try? manager.destinationOfSymbolicLink(atPath:root.path)) == nil else {throw failure("The recovery location is a link. Saved data was kept unchanged.")}
+        var isDirectory:ObjCBool=false
+        if manager.fileExists(atPath:root.path,isDirectory:&isDirectory) {
+            guard isDirectory.boolValue else {throw failure("The recovery location is not a folder.")}
+        } else {try manager.createDirectory(at:root,withIntermediateDirectories:false)}
+        guard try URL(fileURLWithPath:root.path).resourceValues(forKeys:[.isDirectoryKey]).isDirectory == true else {throw failure("The recovery location is not a folder.")}
+        return root
+    }
+    private func checkedResetFile(_ file:URL)throws->Data {
+        guard (try? FileManager.default.destinationOfSymbolicLink(atPath:file.path)) == nil,
+              try URL(fileURLWithPath:file.path).resourceValues(forKeys:[.isRegularFileKey]).isRegularFile == true else {throw failure("The recovery copy is not a regular file. Saved data was kept unchanged.")}
+        return try Data(contentsOf:file)
+    }
+    private func writeResetFile(_ bytes:Data,to file:URL)throws {
+        try bytes.write(to:file,options:.atomic)
+        let handle=try FileHandle(forWritingTo:file)
+        defer {try? handle.close()}
+        try handle.synchronize()
+        guard try Data(contentsOf:file) == bytes else {throw failure("The recovery copy could not be verified. Saved data was kept unchanged.")}
+    }
+    private func resetFlash(_ pointer:UnsafeMutableRawPointer)throws->Data {
+        let size=instrument_flash(pointer,nil,0)
+        guard size>0,size<=4*1024*1024 else {throw failure("The native engine did not provide a complete saved-data image.")}
+        var bytes=Data(count:size)
+        let copied=bytes.withUnsafeMutableBytes {instrument_flash(pointer,$0.bindMemory(to:UInt8.self).baseAddress,size)}
+        guard copied == size else {throw failure("The native saved-data image was incomplete.")}
+        return bytes
+    }
+    @MainActor private func replaceCurrentNativeSavedData(restoring recovery:FirmwareResetRecovery?)async throws->FirmwareResetRecovery {
+        try Task.checkCancellation()
+        guard !busy,!firmwareLoadPending,!importPending,let selected else {throw failure("Wait for the selected instrument to finish loading.")}
+        guard executionMode == .native,nativeBackendName != nil,sampleAuditionDepth == 0 else {throw failure("Choose a loaded native instrument and finish any sample preview before replacing saved data.")}
+        firmwareLoadPending=true
+        let ticket=beginPlaybackOperation(),epoch=playbackDemand.epoch
+        return try await withCheckedThrowingContinuation {continuation in
+            // Enqueue on worker immediately: lifecycle operations cannot finish a
+            // newer ticket ahead of a reset still waiting on the storage queue.
+            worker.async { [self] in
+                var candidate:UnsafeMutableRawPointer?
+                let previous=machine
+                var stopped=false,installed=false
+                do {
+                    guard activeID == selected.id,activeMode == .native,activeNativeKind != 0,let previous,
+                          instrument_native_kind(previous) == activeNativeKind else {throw failure("The selected native instrument changed. Saved data was kept unchanged.")}
+                    let package=try storage.sync {try Data(contentsOf:selected.url)}
+                    let digest=Self.resetDigest(package)
+                    guard Self.nativeKind(package) == activeNativeKind,
+                          let entry=CatalogFirmware.available.first(where:{$0.sha256 == digest}) else {throw failure("The selected package no longer matches its compiled release. Saved data was kept unchanged.")}
+                    let kind=activeNativeKind,autosave=stateURL(selected.id)
+                    let restored:Data?=try storage.sync {
+                        // Reject links/directories instead of following a path
+                        // outside the selected release's owned autosave entry.
+                        if (try? FileManager.default.destinationOfSymbolicLink(atPath:autosave.path)) != nil {throw failure("The selected autosave is a link. Saved data was kept unchanged.")}
+                        if FileManager.default.fileExists(atPath:autosave.path) {_=try checkedResetFile(autosave)}
+                        guard let recovery else{return nil}
+                        let root=try checkedResetRoot(),folder=recovery.backupURL.deletingLastPathComponent()
+                        guard recovery.firmwareID == selected.id,recovery.packageSHA256 == digest,
+                              folder.deletingLastPathComponent().standardizedFileURL == root.standardizedFileURL,
+                              folder.lastPathComponent == recovery.id.uuidString,recovery.backupURL.lastPathComponent == "original.flash",
+                              (try? FileManager.default.destinationOfSymbolicLink(atPath:folder.path)) == nil else {throw failure("This recovery copy belongs to another instrument or location.")}
+                        let receiptBytes=try checkedResetFile(folder.appendingPathComponent("receipt.json"))
+                        guard Self.resetDigest(receiptBytes) == recovery.receiptSHA256 else {throw failure("The recovery receipt changed. Current saved data was kept.")}
+                        let decoder=JSONDecoder();decoder.dateDecodingStrategy = .iso8601
+                        let receipt=try decoder.decode(FirmwareResetReceipt.self,from:receiptBytes)
+                        let bytes=try checkedResetFile(recovery.backupURL)
+                        guard receipt.schemaVersion == 1,receipt.id == recovery.id,receipt.firmwareID == selected.id,
+                              receipt.packageSHA256 == digest,receipt.packageVersion == entry.version,receipt.nativeKind == kind,
+                              receipt.autosaveFilename == autosave.lastPathComponent,receipt.originalBytes == bytes.count,
+                              receipt.originalSHA256 == Self.resetDigest(bytes) else {throw failure("The recovery saved data could not be verified. Current saved data was kept.")}
+                        return bytes
+                    }
+                    var error=[UInt8](repeating:0,count:512)
+                    guard let next=package.withUnsafeBytes({instrument_create($0.bindMemory(to:UInt8.self).baseAddress,package.count,&error,error.count)}) else {throw failure("The native instrument could not be created. Saved data was kept unchanged.")}
+                    candidate=next
+                    guard instrument_native_kind(next) == kind else {throw failure("The required native engine is unavailable.")}
+                    if let restored {
+                        guard restored.count == instrument_flash(next,nil,0),restored.withUnsafeBytes({instrument_restore(next,$0.bindMemory(to:UInt8.self).baseAddress,restored.count)}) else {throw failure("The engine could not restore the complete recovery image.")}
+                    }
+                    // Initialize defaults/display through the real source engine
+                    // even if host playback is paused. No audio device is started.
+                    instrument_volume(next,workerVolume)
+                    var warmup=[Float](repeating:0,count:1024)
+                    guard instrument_render(next,&warmup,512) == 512,warmup.allSatisfy(\.isFinite) else {throw failure("The replacement native engine did not initialize correctly.")}
+                    let replacement=try resetFlash(next)
+                    guard let original=try activeFlash(),original.count == replacement.count else {throw failure("The current native saved data could not be backed up completely.")}
+                    let tokenAndStage:(FirmwareResetRecovery,URL)=try storage.sync {
+                        let root=try checkedResetRoot(),id=UUID(),folder=root.appendingPathComponent(id.uuidString,isDirectory:true)
+                        try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:false)
+                        let originalURL=folder.appendingPathComponent("original.flash")
+                        let receipt=FirmwareResetReceipt(schemaVersion:1,id:id,firmwareID:selected.id,firmwareName:selected.name,packageSHA256:digest,packageVersion:entry.version,nativeKind:kind,originalSHA256:Self.resetDigest(original),originalBytes:original.count,autosaveFilename:autosave.lastPathComponent,createdAt:Date())
+                        let encoder=JSONEncoder();encoder.outputFormatting=[.prettyPrinted,.sortedKeys];encoder.dateEncodingStrategy = .iso8601
+                        let receiptBytes=try encoder.encode(receipt)
+                        try writeResetFile(original,to:originalURL)
+                        try writeResetFile(receiptBytes,to:folder.appendingPathComponent("receipt.json"))
+                        let stage=folder.appendingPathComponent("replacement.flash")
+                        try writeResetFile(replacement,to:stage)
+                        return (FirmwareResetRecovery(id:id,firmwareID:selected.id,packageSHA256:digest,backupURL:originalURL,receiptSHA256:Self.resetDigest(receiptBytes)),stage)
+                    }
+                    stopWorker();stopped=true
+                    nativeReplacementUncommitted=true
+                    machine=next;installed=true
+                    try applyPlaybackWorker()
+                    let display=captureNativeDisplay()
+                    // All validation, backup, staging and audio start can fail
+                    // before this sole commit. rename failure retains the old
+                    // entry; after successful rename no throwing work remains.
+                    try storage.sync {
+                        let result=tokenAndStage.1.path.withCString {source in autosave.path.withCString {destination in Darwin.rename(source,destination)}}
+                        guard result == 0 else {throw NSError(domain:NSPOSIXErrorDomain,code:Int(errno),userInfo:[NSLocalizedDescriptionKey:"The instrument's saved data could not be replaced. Previous data was kept."])}
+                        flashDigests[autosave.lastPathComponent]=Data(SHA256.hash(data:replacement))
+                    }
+                    nativeReplacementUncommitted=false
+                    instrument_destroy(previous);candidate=nil
+                    publishDiagnostics(force:true)
+                    let live=playing
+                    DispatchQueue.main.async {
+                        self.firmwareLoadPending=false;self.screen=display?.image;self.leds=display?.leds ?? self.leds
+                        self.finishPlaybackOperation(ticket,live:live)
+                        continuation.resume(returning:tokenAndStage.0)
+                    }
+                } catch {
+                    var resultError=error
+                    var restartFailed=false
+                    if installed {stopWorker();machine=previous}
+                    nativeReplacementUncommitted=false
+                    instrument_destroy(candidate)
+                    if stopped {
+                        do {try applyPlaybackWorker()}
+                        catch {
+                            restartFailed=true;playbackDemand.fail(epoch:epoch)
+                            resultError=failure("Previous saved data and instrument were kept, but audio could not restart. Tap Resume to retry. \(resultError.localizedDescription)")
+                        }
+                    }
+                    let live=playing,returnedError=resultError,holdForRetry=restartFailed
+                    DispatchQueue.main.async {
+                        if holdForRetry,epoch == self.playbackDemand.epoch {self.playbackPolicy.hold();self.updatePlaybackDemand()}
+                        self.firmwareLoadPending=false;self.finishPlaybackOperation(ticket,live:live)
+                        continuation.resume(throwing:returnedError)
+                    }
+                }
+            }
+        }
+    }
     /// The file service never accesses an engine from its disk or UI queue.
     @MainActor func captureSloopExportContext() async throws -> (snapshot:SloopWorkSnapshot,package:Data) {
         guard !busy,let selected else {throw ProjectFilesError("Wait for the instrument to finish loading.")}

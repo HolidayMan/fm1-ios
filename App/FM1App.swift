@@ -39,6 +39,10 @@ struct InstrumentView:View {
     @State private var about=false
     @State private var choosingFinish=false
     @State private var projectFiles=false
+    @State private var confirmingReset=false
+    @State private var resetError:String?
+    @State private var resetRecovery:FirmwareResetRecovery?
+    @State private var confirmingResetRestore=false
     @AppStorage("panelFinish") private var finishName=PanelFinish.black.rawValue
     @AppStorage("instrumentHeaderCollapsed") private var headerCollapsed=false
     private var finish:PanelFinish {PanelFinish(rawValue:finishName) ?? .black}
@@ -125,6 +129,8 @@ struct InstrumentView:View {
                     Section("Playing and saving") {
                         Text("Choose a release from the firmware library. Its download size is shown before you start. Downloads need an internet connection; installed releases can be played offline.")
                         Text("Each release keeps its own saved sounds on this device. Switching releases keeps those saves. Audio pauses when you leave the app or disconnect the audio output.")
+                        Text("The top reset button clears only the selected instrument’s work, internal save slots and settings. Save unsaved edits inside the firmware first. To restore saved data from the most recent reset during this session, touch and hold that button. App-library copies and other instruments are kept.")
+                            .accessibilityIdentifier("Reset instrument information")
                         if CatalogFirmware.available.contains(where:{$0.id == "hortator"}) {
                             Text("Hortator uses four project slots. Stop playback, open SAVE → PROJECT, choose slot A–D with Knob 1, then turn Knob 4 twice and wait for SAVED before switching instruments or closing. The last saved slot opens next time.")
                                 .accessibilityIdentifier("Hortator saving information")
@@ -169,6 +175,34 @@ struct InstrumentView:View {
             }
         }
         .tint(finish.accentColor)
+        .alert("Reset current instrument?",isPresented:$confirmingReset) {
+            Button("Reset",role:.destructive) {
+                ControlHaptics.shared.button()
+                Task {
+                    do {resetRecovery=try await instrument.resetCurrentFirmware()}
+                    catch {resetError=error.localizedDescription}
+                }
+            }
+            Button("Cancel",role:.cancel) {}
+        } message: {
+            Text("Resets \(instrument.selected?.name ?? "this instrument") to its initial state, including its work, saved slots, sounds and settings. Save unsaved edits inside the firmware first. A recovery copy of saved data is kept. App-library project copies and other instruments are kept.")
+        }
+        .alert("Restore pre-reset saved data?",isPresented:$confirmingResetRestore) {
+            Button("Restore",role:.destructive) {
+                guard let recovery=resetRecovery else{return}
+                ControlHaptics.shared.button()
+                Task {
+                    do {try await instrument.restoreFirmwareReset(recovery);resetRecovery=nil}
+                    catch {resetError=error.localizedDescription}
+                }
+            }
+            Button("Cancel",role:.cancel) {}
+        } message: {
+            Text("Replaces this instrument’s current state with saved data from before the last reset. Save any new edits first. A recovery copy of current saved data is kept. Unsaved edits are not restored.")
+        }
+        .alert("Couldn’t reset instrument",isPresented:Binding(get:{resetError != nil},set:{if !$0 {resetError=nil}})) {
+            Button("OK",role:.cancel){resetError=nil}
+        } message:{Text(resetError ?? "")}
         .alert("Couldn’t load firmware",isPresented:Binding(get:{instrument.message != nil},set:{if !$0{instrument.message=nil}})) {Button("OK"){instrument.message=nil}} message:{Text(instrument.message ?? "")}
         }
     }
@@ -197,6 +231,17 @@ struct InstrumentView:View {
             Button {instrument.playbackWanted ? instrument.pause() : instrument.resume();ControlHaptics.shared.button()} label:{Image(systemName:instrument.playbackWanted ? "pause.fill" : "play.fill").offset(y:-4).frame(width:44,height:44).contentShape(Rectangle())}
                 .disabled(instrument.selected == nil || (instrument.busy && !instrument.playbackWanted)).accessibilityLabel(instrument.playbackWanted ? "Pause instrument" : "Resume instrument")
             Button {instrument.toggleMute();ControlHaptics.shared.button()} label:{Image(systemName:instrument.muted ? "speaker.slash" : "speaker.wave.2").offset(y:-4).frame(width:44,height:44).contentShape(Rectangle())}.accessibilityIdentifier("Mute audio").accessibilityLabel(instrument.muted ? "Unmute audio" : "Mute audio").accessibilityValue(instrument.muted ? "Muted" : "Sound on")
+            Button {confirmingReset=true;ControlHaptics.shared.button()} label:{
+                Image(systemName:"arrow.counterclockwise").offset(y:-4).frame(width:44,height:44).contentShape(Rectangle())
+            }.disabled(instrument.selected == nil || instrument.busy)
+                .accessibilityIdentifier("Reset instrument").accessibilityLabel("Reset current instrument")
+                .accessibilityHint("Reset only this instrument after confirmation. Touch and hold to restore saved data from the last reset in this session")
+                .contextMenu {
+                    if let recovery=resetRecovery,recovery.firmwareID == instrument.selected?.id {
+                        Button("Restore pre-reset saved data…",systemImage:"clock.arrow.circlepath") {confirmingResetRestore=true}
+                            .disabled(instrument.busy)
+                    }
+                }
             Button {choosingFinish=true;ControlHaptics.shared.button()} label:{
                 HStack(spacing:0) {Circle().fill(finish.swatch).frame(width:16,height:16);Circle().fill(finish.secondarySwatch).frame(width:16,height:16).padding(.leading,-7)}.offset(y:-4).frame(width:44,height:44).contentShape(Rectangle())
             }.accessibilityLabel("Panel color").accessibilityValue(finish.rawValue)
